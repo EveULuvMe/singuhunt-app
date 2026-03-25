@@ -1,0 +1,58 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/gates/:gate/claim-ticket",
+      "destination": "/api/claim-ticket?gate=:gate"
+    },
+    {
+      "source": "/api/gates/:gate/deliver-ticket",
+      "destination": "/api/deliver-ticket?gate=:gate"
+    },
+    {
+      "source": "/api/gates/:gate/health",
+      "destination": "/api/health?gate=:gate"
+    },
+    {
+      "source": "/gates/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        }
+      ]
+    },
+    {
+      "source": "/",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/index.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/gates/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
+      ]
+    }
+  ]
+}

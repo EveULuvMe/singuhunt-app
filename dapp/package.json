@@ -1,0 +1,28 @@
+{
+  "name": "singuhunt-dapp",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@evefrontier/dapp-kit": "latest",
+    "@mysten/dapp-kit-react": "^2.0.1",
+    "@mysten/sui": "latest",
+    "@radix-ui/themes": "latest",
+    "@tanstack/react-query": "latest",
+    "react": "^19",
+    "react-dom": "^19"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@vitejs/plugin-react-swc": "latest",
+    "typescript": "latest",
+    "vite": "latest"
+  }
+}

@@ -1,0 +1,457 @@
+:root {
+  --color-background: #0B0B0B;
+  --color-text: #FAFAE5;
+  --color-text-muted: rgba(250, 250, 229, 0.6);
+  --color-border: rgba(250, 250, 229, 0.2);
+  --color-accent: #00ffaa;
+  --color-danger: #ff4444;
+  --color-collected: #ffaa00;
+  --color-available: #00ffaa;
+  --color-button-bg: rgba(250, 250, 229, 0.08);
+  --color-button-hover: rgba(250, 250, 229, 0.15);
+  --color-card-bg: rgba(250, 250, 229, 0.03);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: "Favorit", "ABC Favorit Mono", monospace;
+  font-weight: 300;
+  font-size: 14px;
+  line-height: 150%;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+  background-color: var(--color-background);
+}
+
+h1, h2, h3 {
+  font-family: "Frontier Disket Mono", monospace;
+  font-weight: 400;
+  color: var(--color-text);
+  line-height: 120%;
+}
+
+h1 { font-size: 2rem; margin-bottom: 4px; }
+h2 { font-size: 1.2rem; margin-bottom: 12px; color: var(--color-text-muted); }
+h3 { font-size: 1rem; margin-bottom: 8px; }
+
+.app {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 24px 20px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.header-left { flex: 1; }
+
+.subtitle {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.connect-btn {
+  font-family: "Frontier Disket Mono", monospace;
+  font-size: 13px;
+  background: var(--color-button-bg);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.connect-btn:hover { background: var(--color-button-hover); }
+
+.status-bar {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 24px;
+  padding: 12px 16px;
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+}
+
+.status-item { flex: 1; }
+.status-label {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.status-value {
+  font-family: "Frontier Disket Mono", monospace;
+  font-size: 1.1rem;
+  color: var(--color-accent);
+}
+
+.bulletin-board {
+  margin-bottom: 24px;
+  padding: 16px;
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+}
+
+.context-row {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  margin-top: 6px;
+  word-break: break-all;
+}
+
+.hint {
+  margin-top: 12px;
+  color: var(--color-text-muted);
+}
+
+.error-text {
+  margin-top: 12px;
+  color: var(--color-danger);
+}
+
+.ticket-card {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid rgba(0, 255, 170, 0.25);
+  background: rgba(0, 255, 170, 0.05);
+}
+
+.delivery-panel {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+.delivery-card {
+  margin-top: 10px;
+  padding: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid rgba(250, 250, 229, 0.15);
+  background: rgba(250, 250, 229, 0.03);
+}
+
+.delivery-copy {
+  flex: 1;
+}
+
+.delivery-title {
+  font-family: "Frontier Disket Mono", monospace;
+  font-size: 0.9rem;
+}
+
+.home-status {
+  margin-top: 12px;
+  padding: 10px 12px;
+  font-family: "Frontier Disket Mono", monospace;
+  font-size: 0.85rem;
+  border: 1px solid var(--color-border);
+}
+
+.home-status.open {
+  color: var(--color-available);
+  border-color: rgba(0, 255, 170, 0.35);
+  background: rgba(0, 255, 170, 0.06);
+}
+
+.home-status.complete {
+  color: var(--color-collected);
+  border-color: rgba(255, 170, 0, 0.35);
+  background: rgba(255, 170, 0, 0.08);
+}
+
+.singularity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.singularity-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: rgba(0, 255, 170, 0.03);
+  border: 1px solid rgba(0, 255, 170, 0.15);
+  transition: all 0.2s;
+}
+
+.singularity-card.collected {
+  background: rgba(255, 170, 0, 0.05);
+  border-color: rgba(255, 170, 0, 0.2);
+  opacity: 0.7;
+}
+
+.singularity-index {
+  font-family: "Frontier Disket Mono", monospace;
+  font-size: 1.5rem;
+  width: 36px;
+  text-align: center;
+  color: var(--color-available);
+}
+.singularity-card.collected .singularity-index {
+  color: var(--color-collected);
+  text-decoration: line-through;
+}
+
+.singularity-info { flex: 1; }
+.singularity-system {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+.singularity-coords {
+  font-family: "Frontier Disket Mono", monospace;
+  font-size: 0.9rem;
+}
+
+.singularity-status {
+  font-family: "Frontier Disket Mono", monospace;
+  font-size: 0.75rem;
+  padding: 4px 8px;
+  border: 1px solid;
+}
+.singularity-status.available {
+  color: var(--color-available);
+  border-color: var(--color-available);
+}
+.singularity-status.taken {
+  color: var(--color-collected);
+  border-color: var(--color-collected);
+}
+.singularity-status.delivered {
+  color: #ff7b00;
+  border-color: #ff7b00;
+}
+
+.collect-btn {
+  font-family: "Frontier Disket Mono", monospace;
+  font-size: 12px;
+  background: rgba(0, 255, 170, 0.15);
+  border: 1px solid var(--color-available);
+  color: var(--color-available);
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.collect-btn:hover { background: rgba(0, 255, 170, 0.3); }
+.collect-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.claim-section {
+  margin-top: 24px;
+  padding: 16px;
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  text-align: center;
+}
+
+.claim-btn {
+  font-family: "Frontier Disket Mono", monospace;
+  font-size: 14px;
+  background: rgba(0, 255, 170, 0.2);
+  border: 2px solid var(--color-accent);
+  color: var(--color-accent);
+  padding: 12px 32px;
+  cursor: pointer;
+  margin-top: 12px;
+  transition: all 0.2s;
+}
+.claim-btn:hover { background: rgba(0, 255, 170, 0.4); }
+.claim-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.timer {
+  font-family: "Frontier Disket Mono", monospace;
+  font-size: 1.8rem;
+  color: var(--color-accent);
+  text-align: center;
+  margin: 8px 0;
+}
+
+.no-hunt {
+  text-align: center;
+  padding: 40px;
+  color: var(--color-text-muted);
+  font-size: 1.1rem;
+}
+
+.footer {
+  margin-top: 32px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: var(--color-text-muted);
+}
+
+.quick-action {
+  text-align: center;
+}
+.quick-action .claim-btn {
+  font-size: 16px;
+  padding: 14px 32px;
+}
+
+@media (max-width: 560px) {
+  .app { padding: 12px 10px; }
+  .status-bar { flex-wrap: wrap; gap: 8px 16px; padding: 8px 10px; margin-bottom: 12px; }
+  .status-item { min-width: 40%; }
+  .bulletin-board { padding: 10px; margin-bottom: 12px; }
+  .singularity-grid { grid-template-columns: 1fr; }
+  h1 { font-size: 1.4rem; }
+  .timer { font-size: 1.3rem; }
+}
+
+/* Mode info button */
+.mode-value {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mode-info-btn {
+  font-family: "Frontier Disket Mono", monospace;
+  font-size: 11px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: var(--color-button-bg);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+  line-height: 1;
+}
+.mode-info-btn:hover {
+  background: var(--color-accent);
+  color: var(--color-background);
+  border-color: var(--color-accent);
+}
+
+/* Gate metadata */
+.solar-system {
+  color: var(--color-accent) !important;
+  font-size: 0.8rem;
+}
+.gate-coords {
+  font-family: "Frontier Disket Mono", monospace;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+/* Modal overlay */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+.modal-content {
+  max-width: 480px;
+  width: 100%;
+  padding: 24px;
+  background: var(--color-background);
+  border: 1px solid var(--color-accent);
+  text-align: center;
+}
+.modal-content h3 {
+  font-size: 1.4rem;
+  color: var(--color-accent);
+  margin-bottom: 20px;
+}
+.modal-steps {
+  text-align: left;
+  margin-bottom: 20px;
+}
+.modal-step {
+  padding: 8px 0;
+  font-size: 0.9rem;
+  color: var(--color-text);
+  border-bottom: 1px solid var(--color-border);
+}
+.modal-step:last-child {
+  border-bottom: none;
+}
+.modal-assembly {
+  font-family: "Frontier Disket Mono", monospace;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  margin-bottom: 16px;
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  display: inline-block;
+}
+
+/* Deep Decrypt */
+.decrypt-panel {
+  border-color: rgba(138, 43, 226, 0.3);
+  background: rgba(138, 43, 226, 0.04);
+}
+.decrypt-question {
+  margin: 16px 0;
+  padding: 16px;
+  border: 1px solid rgba(138, 43, 226, 0.25);
+  background: rgba(138, 43, 226, 0.06);
+}
+.decrypt-prompt {
+  font-size: 1.1rem;
+  color: var(--color-text);
+  margin-bottom: 8px;
+  line-height: 160%;
+}
+.decrypt-source {
+  font-size: 0.8rem;
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+.decrypt-form {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.decrypt-input {
+  flex: 1;
+  font-family: "Frontier Disket Mono", monospace;
+  font-size: 14px;
+  background: rgba(250, 250, 229, 0.05);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  padding: 10px 12px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.decrypt-input:focus {
+  border-color: var(--color-accent);
+}
+.decrypt-input::placeholder {
+  color: var(--color-text-muted);
+}
+.decrypt-claim {
+  margin-top: 12px;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+.loading { animation: pulse 2s infinite; }
