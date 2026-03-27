@@ -1,9 +1,20 @@
-import { createHmac, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
+import { bcs } from "@mysten/sui/bcs";
 
-const CLAIM_TICKET_DOMAIN = "SINGUHUNT_CLAIM_V1";
-const DELIVER_TICKET_DOMAIN = "SINGUHUNT_DELIVER_V1";
+const CLAIM_TICKET_DOMAIN = "SINGUHUNT_CLAIM_V2";
+const DELIVER_TICKET_DOMAIN = "SINGUHUNT_DELIVER_V2";
 const DEV_CONTEXT_DOMAIN = "SINGUHUNT_DEV_CONTEXT_V1";
+
+const claimTicketBcs = bcs.struct("ClaimTicketPayload", {
+  domain: bcs.vector(bcs.u8()),
+  player: bcs.Address,
+  epoch: bcs.u64(),
+  ball_index: bcs.u64(),
+  assembly_id: bcs.Address,
+  ticket_expires_at_ms: bcs.u64(),
+  ticket_nonce: bcs.u64(),
+});
 
 export type ClaimTicketPayload = {
   playerAddress: string;
@@ -54,50 +65,22 @@ export function normalizeAddress(value: string): string {
   return `0x${hex.padStart(64, "0")}`;
 }
 
-function addressToBytes(value: string): Uint8Array {
-  const normalized = stripHexPrefix(normalizeAddress(value));
-  return Uint8Array.from(Buffer.from(normalized, "hex"));
-}
-
-function u64ToLeBytes(value: bigint): Uint8Array {
-  if (value < 0n || value > 0xffff_ffff_ffff_ffffn) {
-    throw new Error(`u64 out of range: ${value}`);
-  }
-
-  const bytes = new Uint8Array(8);
-  let current = value;
-  for (let i = 0; i < 8; i += 1) {
-    bytes[i] = Number(current & 0xffn);
-    current >>= 8n;
-  }
-  return bytes;
-}
-
-export function concatBytes(...chunks: Uint8Array[]): Uint8Array {
-  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-  const result = new Uint8Array(totalLength);
-  let offset = 0;
-
-  for (const chunk of chunks) {
-    result.set(chunk, offset);
-    offset += chunk.length;
-  }
-
-  return result;
+function sha3_256(bytes: Uint8Array): Uint8Array {
+  return new Uint8Array(createHash("sha3-256").update(bytes).digest());
 }
 
 export function buildClaimTicketMessage(
   payload: ClaimTicketPayload,
 ): Uint8Array {
-  return concatBytes(
-    new TextEncoder().encode(CLAIM_TICKET_DOMAIN),
-    addressToBytes(payload.playerAddress),
-    u64ToLeBytes(payload.epoch),
-    u64ToLeBytes(payload.ballIndex),
-    addressToBytes(payload.assemblyId),
-    u64ToLeBytes(payload.expiresAtMs),
-    u64ToLeBytes(payload.nonce),
-  );
+  return claimTicketBcs.serialize({
+    domain: Array.from(new TextEncoder().encode(CLAIM_TICKET_DOMAIN)),
+    player: normalizeAddress(payload.playerAddress),
+    epoch: payload.epoch,
+    ball_index: payload.ballIndex,
+    assembly_id: normalizeAddress(payload.assemblyId),
+    ticket_expires_at_ms: payload.expiresAtMs,
+    ticket_nonce: payload.nonce,
+  }).toBytes();
 }
 
 export async function signClaimTicket(
@@ -105,11 +88,11 @@ export async function signClaimTicket(
   payload: ClaimTicketPayload,
 ): Promise<ClaimTicket> {
   const message = buildClaimTicketMessage(payload);
-  const signed = await keypair.signPersonalMessage(message);
+  const signed = await keypair.sign(sha3_256(message));
 
   return {
     ...payload,
-    signature: signed.signature,
+    signature: Buffer.from(signed).toString("base64"),
     signerAddress: keypair.toSuiAddress(),
   };
 }
@@ -117,15 +100,15 @@ export async function signClaimTicket(
 export function buildDeliverTicketMessage(
   payload: DeliverTicketPayload,
 ): Uint8Array {
-  return concatBytes(
-    new TextEncoder().encode(DELIVER_TICKET_DOMAIN),
-    addressToBytes(payload.playerAddress),
-    u64ToLeBytes(payload.epoch),
-    u64ToLeBytes(payload.ballIndex),
-    addressToBytes(payload.assemblyId),
-    u64ToLeBytes(payload.expiresAtMs),
-    u64ToLeBytes(payload.nonce),
-  );
+  return claimTicketBcs.serialize({
+    domain: Array.from(new TextEncoder().encode(DELIVER_TICKET_DOMAIN)),
+    player: normalizeAddress(payload.playerAddress),
+    epoch: payload.epoch,
+    ball_index: payload.ballIndex,
+    assembly_id: normalizeAddress(payload.assemblyId),
+    ticket_expires_at_ms: payload.expiresAtMs,
+    ticket_nonce: payload.nonce,
+  }).toBytes();
 }
 
 export async function signDeliverTicket(
@@ -133,11 +116,11 @@ export async function signDeliverTicket(
   payload: DeliverTicketPayload,
 ): Promise<DeliverTicket> {
   const message = buildDeliverTicketMessage(payload);
-  const signed = await keypair.signPersonalMessage(message);
+  const signed = await keypair.sign(sha3_256(message));
 
   return {
     ...payload,
-    signature: signed.signature,
+    signature: Buffer.from(signed).toString("base64"),
     signerAddress: keypair.toSuiAddress(),
   };
 }

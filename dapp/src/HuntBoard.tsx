@@ -9,10 +9,18 @@ const GAME_STATE_ID =
 const PACKAGE_ID =
   import.meta.env.VITE_SINGUHUNT_PACKAGE_ID ||
   "0xbce47d3e624f2478bdd77a114931b1af541929032da3db01cb6b6d4378aba1ab";
+const EVE_COIN_TYPE =
+  import.meta.env.VITE_EVE_COIN_TYPE ||
+  "0xf0446b93345c1118f21239d7ac58fb82d005219b2016e100f074e4d17162a465::EVE::EVE";
+const SINGU_SHARD_TREASURY_ID = import.meta.env.VITE_SINGU_SHARD_TREASURY_ID || "";
+const ACHIEVEMENT_TREASURY_ID = import.meta.env.VITE_ACHIEVEMENT_TREASURY_ID || "";
+const SINGU_SHARD_TOKEN_TYPE = `0x2::token::Token<${PACKAGE_ID}::singu_shard_token::SINGU_SHARD_TOKEN>`;
+const REGISTRATION_PASS_TYPE = `${PACKAGE_ID}::singuhunt::RegistrationPass`;
 const RPC_URL =
   import.meta.env.VITE_SUI_RPC_URL || "https://fullnode.testnet.sui.io:443";
 const TICKET_API_URL = import.meta.env.VITE_TICKET_API_URL || "/api/gates";
 const CACHE_VERSION = import.meta.env.VITE_CACHE_VERSION || "2";
+const EVE_DECIMALS = 9;
 
 const MODE_LABELS: Record<number, string> = {
   1: "SOLO RACE",
@@ -22,7 +30,85 @@ const MODE_LABELS: Record<number, string> = {
   5: "OBSTACLE RUN",
 };
 
-type BallGate = {
+// Daily schedule in UTC+8 — used for "next session" display
+const DAILY_SCHEDULE = [
+  { mode: 1, label: "SOLO RACE",     regH: 8,  regM: 57, gameH: 9,  gameM: 0,  durationMin: 7 },
+  { mode: 2, label: "TEAM RACE",     regH: 9,  regM: 57, gameH: 10, gameM: 0,  durationMin: 7 },
+  { mode: 3, label: "DEEP DECRYPT",  regH: 10, regM: 57, gameH: 11, gameM: 0,  durationMin: 7 },
+  { mode: 4, label: "LARGE ARENA",   regH: 12, regM: 57, gameH: 13, gameM: 0,  durationMin: 12 },
+  { mode: 5, label: "OBSTACLE RUN",  regH: 14, regM: 27, gameH: 14, gameM: 30, durationMin: 12 },
+];
+
+function getNextSession(): { mode: number; label: string; regTime: Date; gameTime: Date; durationMin: number } | null {
+  const now = new Date();
+  // Convert now to UTC+8 for comparison
+  const utc8Now = new Date(now.getTime() + 8 * 3600_000);
+  const todayH = utc8Now.getUTCHours();
+  const todayM = utc8Now.getUTCMinutes();
+  const todayMinutes = todayH * 60 + todayM;
+
+  for (const s of DAILY_SCHEDULE) {
+    const gameEndMinutes = s.gameH * 60 + s.gameM + s.durationMin;
+    if (todayMinutes < gameEndMinutes) {
+      // This session hasn't ended yet — it's the next (or current) one
+      const base = new Date(utc8Now);
+      base.setUTCHours(s.regH, s.regM, 0, 0);
+      const regTime = new Date(base.getTime() - 8 * 3600_000); // convert back to local
+      base.setUTCHours(s.gameH, s.gameM, 0, 0);
+      const gameTime = new Date(base.getTime() - 8 * 3600_000);
+      return { mode: s.mode, label: s.label, regTime, gameTime, durationMin: s.durationMin };
+    }
+  }
+  // All sessions today are done — next is tomorrow's first session
+  const s = DAILY_SCHEDULE[0];
+  const tomorrow = new Date(utc8Now);
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  tomorrow.setUTCHours(s.regH, s.regM, 0, 0);
+  const regTime = new Date(tomorrow.getTime() - 8 * 3600_000);
+  tomorrow.setUTCHours(s.gameH, s.gameM, 0, 0);
+  const gameTime = new Date(tomorrow.getTime() - 8 * 3600_000);
+  return { mode: s.mode, label: s.label, regTime, gameTime, durationMin: s.durationMin };
+}
+
+function useNextSession(enabled: boolean) {
+  const [next, setNext] = useState(() => enabled ? getNextSession() : null);
+  useEffect(() => {
+    if (!enabled) { setNext(null); return; }
+    setNext(getNextSession());
+    const id = setInterval(() => setNext(getNextSession()), 30_000);
+    return () => clearInterval(id);
+  }, [enabled]);
+  return next;
+}
+
+function useCountdownTo(target: Date | null): string {
+  const [text, setText] = useState("");
+  useEffect(() => {
+    if (!target) { setText(""); return; }
+    const tick = () => {
+      const diff = target.getTime() - Date.now();
+      if (diff <= 0) { setText("NOW"); return; }
+      const h = Math.floor(diff / 3600_000);
+      const m = Math.floor((diff % 3600_000) / 60_000);
+      const s = Math.floor((diff % 60_000) / 1000);
+      setText(`${h > 0 ? `${h}h ` : ""}${String(m).padStart(2, "0")}m ${String(s).padStart(2, "0")}s`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [target]);
+  return text;
+}
+
+const MODE_REGISTRATION_FEE_EVE: Record<number, bigint> = {
+  1: 1_000_000_000n,
+  2: 1_000_000_000n,
+  3: 1_000_000_000n,
+  4: 1_000_000_000n,
+  5: 1_000_000_000n,
+};
+
+type ShardGate = {
   gate_id: string;
   name: string;
   has_ball: boolean;
@@ -46,7 +132,7 @@ type GameState = {
   end_gate: string;
   end_gate_name: string;
   ticket_signer: string;
-  ball_gates: BallGate[];
+  shard_gates: ShardGate[];
   epoch_winner: string | null; // address of winner, or null if no winner yet
 };
 
@@ -61,15 +147,27 @@ type ClaimTicket = {
   signature: string;
 };
 
-type OwnedDragonBall = {
+type OwnedSinguShard = {
   objectId: string;
   epoch: number;
-  starIndex: number;
+  shardIndex: number;
   gateId: string;
   gateName: string;
   collector: string;
   delivered: boolean;
   deliveredAt: number;
+};
+
+type OwnedSinguShardToken = {
+  objectId: string;
+};
+
+type OwnedRegistrationPass = {
+  objectId: string;
+  epoch: number;
+  mode: number;
+  feePaidLux: number;
+  issuedAt: number;
 };
 
 type TeamAssignmentState = {
@@ -133,6 +231,15 @@ function base64ToBytes(value: string): Uint8Array {
   return bytes;
 }
 
+function formatBalance(raw: string | number | bigint, decimals = EVE_DECIMALS): string {
+  const digits = String(raw).replace("-", "");
+  const padded = digits.padStart(decimals + 1, "0");
+  const integer = padded.slice(0, padded.length - decimals) || "0";
+  const fraction = padded.slice(padded.length - decimals, padded.length - decimals + 2);
+  const prefix = String(raw).startsWith("-") ? "-" : "";
+  return `${prefix}${Number(integer).toLocaleString()}.${fraction}`;
+}
+
 function decodeDynamicFieldValue<T>(payload: any): T | null {
   const value = payload?.result?.data?.content?.fields?.value;
   if (!value) return null;
@@ -160,12 +267,38 @@ async function fetchDynamicFieldValue<T>(
   }
 }
 
+async function rpcCall<T>(method: string, params: unknown[]): Promise<T> {
+  const response = await fetch(RPC_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method,
+      params,
+    }),
+  });
+  const json = await response.json();
+  if (json.error) {
+    throw new Error(json.error.message || `${method} failed`);
+  }
+  return json.result as T;
+}
+
 /** Slug → assembly ID mapping (matches Cloudflare proxy TRUSTED_GATE_MAP). */
 const SLUG_ASSEMBLY_MAP: Record<string, string> = {
-  "singu-01": "0x2222222222222222222222222222222222222222222222222222222222222222",
-  "singu-02": "0x3333333333333333333333333333333333333333333333333333333333333333",
+  "singu-home": "0x1111111111111111111111111111111111111111111111111111111111111111",
   "home": "0x1111111111111111111111111111111111111111111111111111111111111111",
   "bulletin": "0x1111111111111111111111111111111111111111111111111111111111111111",
+  "singu-mini-001": "0x2222222222222222222222222222222222222222222222222222222222222222",
+  "singu-mini-002": "0x3333333333333333333333333333333333333333333333333333333333333333",
+  "singu-mini-003": "0x0000000000000000000000000000000000000000000000000000000000000000", // TBD
+  "singu-ssu-001": "0x4444444444444444444444444444444444444444444444444444444444444444",
+  "singu-ssu-002": "0x5555555555555555555555555555555555555555555555555555555555555555",
+  "singu-ssu-003": "0x6666666666666666666666666666666666666666666666666666666666666666",
+  "singu-heavy-001": "0x7777777777777777777777777777777777777777777777777777777777777777",
+  "singu-heavy-002": "0x8888888888888888888888888888888888888888888888888888888888888888",
+  "singu-heavy-003": "0x9999999999999999999999999999999999999999999999999999999999999999"
 };
 
 /**
@@ -208,99 +341,113 @@ const MODE_ASSEMBLY_TYPE: Record<number, string> = {
   5: "Mini Gate",
 };
 
-/** Mode intro modal content for all 5 modes. */
+/** Mode intro modal content for all 5 modes — English only. */
 const MODE_INTRO: Record<number, { title: string; assembly: string; steps: string[] }> = {
   1: {
     title: "SOLO RACE",
     assembly: "Mini Gate",
     steps: [
-      "1. REGISTER — 報名參加本場 Hunt",
-      "2. LAUNCH — Hunt 啟動，龍珠散落在各 Mini Gate 據點",
-      "3. FLY — 飛往 HuntBoard 上標示的 Mini Gate 座標",
-      "4. CLAIM — 到達 Mini Gate 後領取龍珠（先到先得）",
-      "5. COLLECT — 收集指定數量的龍珠",
-      "6. RETURN — 帶回起點交付所有龍珠",
-      "7. WIN — 最快完成的前 5% 玩家獲得 Achievement NFT",
+      "1. REGISTER — Sign up during the registration window",
+      "2. LAUNCH — Hunt begins, Singu Shards scatter across Mini Gates",
+      "3. FLY — Warp to the Mini Gate coordinates shown on the HuntBoard",
+      "4. CLAIM — Collect a Singu Shard at the Mini Gate (first come, first served)",
+      "5. COLLECT — Gather the required number of Singu Shards",
+      "6. RETURN — Deliver all Singu Shards back to the Home gate",
+      "7. WIN — Top 5% of finishers earn an Achievement NFT",
     ],
   },
   2: {
     title: "TEAM RACE",
     assembly: "Mini Gate",
     steps: [
-      "1. REGISTER — 報名（3 人一組，報名截止後自動分隊）",
-      "2. TRIM — 截止後若總報名數無法整除 3，最後幾位自動取消資格",
-      "3. SHUFFLE — 系統隨機將成功報名玩家分成 3 人一組",
-      "4. REVEAL — 遊戲開始時於佈告欄公布隊友",
-      "5. SPLIT — 隊友分頭前往不同 Mini Gate 收集龍珠",
-      "6. RETURN — 全部據點完成後，任一隊員回起點完成結算",
-      "7. WIN — 最先完成的前 5% 隊伍獲得 Singu Hunt award - Team Race",
+      "1. REGISTER — Sign up (teams of 3, auto-assigned after registration closes)",
+      "2. TRIM — If total registrations aren't divisible by 3, last few are dropped",
+      "3. SHUFFLE — System randomly assigns players into squads of 3",
+      "4. REVEAL — Teammates are revealed on the bulletin board at game start",
+      "5. SPLIT — Squad members split up to claim Singu Shards at different Mini Gates",
+      "6. RETURN — Once all checkpoints are cleared, any member returns to base to finalize",
+      "7. WIN — Top 5% of teams earn the Team Race Achievement NFT",
     ],
   },
   3: {
     title: "DEEP DECRYPT",
     assembly: "SSU",
     steps: [
-      "1. REGISTER — 報名參加解密挑戰",
-      "2. LAUNCH — Hunt 啟動，當日解密題目出現",
-      "3. READ — 閱讀題目與官方參考連結找答案",
-      "4. ANSWER — 在 SSU 上提交正確答案",
-      "5. CLAIM — 答對後自動獲得鏈上簽名票據",
-      "6. MINT — 用票據在鏈上領取 Achievement NFT",
-      "7. WIN — 最快答對的前 5% 玩家得獎",
+      "1. REGISTER — Sign up for the decryption challenge",
+      "2. LAUNCH — Hunt begins and the daily puzzle question appears",
+      "3. READ — Study the question and the official reference links for clues",
+      "4. ANSWER — Submit your answer at the SSU terminal",
+      "5. CLAIM — Correct answer automatically issues a signed on-chain ticket",
+      "6. MINT — Use the ticket to claim your Achievement NFT on-chain",
+      "7. WIN — Top 5% of correct responders earn the award",
     ],
   },
   4: {
     title: "LARGE ARENA",
     assembly: "Heavy Gate",
     steps: [
-      "1. REGISTER — 報名大型競技場",
-      "2. ENTER — 透過 Heavy Gate 傳送進入競技區域",
-      "3. HUNT — 在競技場內的多個 Heavy Gate 據點搶奪龍珠",
-      "4. CLAIM — 每個據點的龍珠先到先得",
-      "5. DELIVER — 穿越 Heavy Gate 回到起點交付",
-      "6. SURVIVE — 注意其他玩家的攻擊與攔截",
-      "7. WIN — 最快完成的前 5% 玩家獲得 Achievement NFT",
+      "1. REGISTER — Sign up for the arena event",
+      "2. ENTER — Warp through Heavy Gates into the arena zone",
+      "3. HUNT — Race to multiple Heavy Gate nodes to seize Singu Shards",
+      "4. CLAIM — Each node's Singu Shard is first come, first served",
+      "5. DELIVER — Fly back through the Heavy Gate to return Singu Shards to base",
+      "6. SURVIVE — Watch out for other players who may intercept you",
+      "7. WIN — Top 5% of finishers earn an Achievement NFT",
     ],
   },
   5: {
     title: "OBSTACLE RUN",
     assembly: "Mini Gate",
     steps: [
-      "1. REGISTER — 報名障礙賽",
-      "2. LAUNCH — Hunt 啟動，關卡路線公布",
-      "3. GATE 1 — 穿越第一道 Mini Gate（需滿足通行條件）",
-      "4. GATE 2+ — 依序穿越所有 Mini Gate 關卡",
-      "5. CLAIM — 每道關卡通過後領取龍珠",
-      "6. FINISH — 穿越最終 Mini Gate 回到起點",
-      "7. WIN — 最快通關的前 5% 玩家獲得 Achievement NFT",
+      "1. REGISTER — Sign up for the obstacle course",
+      "2. LAUNCH — Hunt begins and the course route is revealed",
+      "3. GATE 1 — Clear the first Mini Gate checkpoint",
+      "4. GATE 2+ — Proceed through each Mini Gate checkpoint in sequence",
+      "5. CLAIM — Collect a Singu Shard after clearing each checkpoint",
+      "6. FINISH — Pass through the final Mini Gate and return to the start",
+      "7. WIN — Top 5% of finishers earn an Achievement NFT",
     ],
   },
 };
 
-function ModeIntroModal({
-  mode,
+const MODE_ORDER = [1, 2, 3, 4, 5] as const;
+
+function GameGuideModal({
+  initialMode,
   onClose,
 }: {
-  mode: number;
+  initialMode: number;
   onClose: () => void;
 }) {
-  const intro = MODE_INTRO[mode];
+  const [activeMode, setActiveMode] = useState(initialMode);
+  const intro = MODE_INTRO[activeMode];
   if (!intro) return null;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <h3>{intro.title}</h3>
+        <h3>GAME GUIDE</h3>
+        <div className="modal-tabs">
+          {MODE_ORDER.map((m) => (
+            <button
+              key={m}
+              className={`modal-tab ${m === activeMode ? "active" : ""}`}
+              onClick={() => setActiveMode(m)}
+            >
+              {MODE_LABELS[m]}
+            </button>
+          ))}
+        </div>
         <div className="modal-assembly">
-          Uses: {intro.assembly}
+          Assembly: {intro.assembly}
         </div>
         <div className="modal-steps">
           {intro.steps.map((step, i) => (
             <div key={i} className="modal-step">{step}</div>
           ))}
         </div>
-        <button className="claim-btn" onClick={onClose}>
-          GOT IT
+        <button className="claim-btn modal-close" onClick={onClose}>
+          CLOSE
         </button>
       </div>
     </div>
@@ -309,14 +456,19 @@ function ModeIntroModal({
 
 function getGateSlugFromPath(): string | null {
   const parts = window.location.pathname.split("/").filter(Boolean);
-  if (parts[0] !== "gates" || !parts[1]) {
-    return null;
+  // New root-level route: /singu-xxx-NNN
+  if (parts.length === 1 && parts[0].startsWith("singu-")) {
+    return parts[0];
   }
-  return parts[1];
+  // Legacy route: /gates/slug
+  if (parts[0] === "gates" && parts[1]) {
+    return parts[1];
+  }
+  return null;
 }
 
 function isHomeSlug(slug: string | null) {
-  return slug === "home" || slug === "bulletin";
+  return slug === "singu-home" || slug === "home" || slug === "bulletin";
 }
 
 async function fetchHuntMode(): Promise<number> {
@@ -586,7 +738,7 @@ async function fetchGameState(): Promise<GameState | null> {
   const fields = json.result?.data?.content?.fields;
   if (!fields) return null;
 
-  const ballGates = (fields.ball_gates || []).map((raw: any) => {
+  const shardGates = (fields.shard_gates || []).map((raw: any) => {
     const gate = raw.fields ?? raw;
     return {
       gate_id: normalizeAddress(gate.gate_id),
@@ -613,12 +765,12 @@ async function fetchGameState(): Promise<GameState | null> {
     end_gate: normalizeAddress(fields.end_gate),
     end_gate_name: decodeMoveString(fields.end_gate_name),
     ticket_signer: normalizeAddress(fields.ticket_signer),
-    ball_gates: ballGates,
+    shard_gates: shardGates,
     epoch_winner: await fetchEpochWinner(Number(fields.current_epoch)),
   };
 }
 
-async function fetchOwnedDragonBalls(owner: string): Promise<OwnedDragonBall[]> {
+async function fetchOwnedSinguShards(owner: string): Promise<OwnedSinguShard[]> {
   const response = await fetch(RPC_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -630,7 +782,7 @@ async function fetchOwnedDragonBalls(owner: string): Promise<OwnedDragonBall[]> 
         normalizeAddress(owner),
         {
           filter: {
-            StructType: `${PACKAGE_ID}::singuhunt::DragonBall`,
+            StructType: `${PACKAGE_ID}::singuhunt::SinguShardRecord`,
           },
           options: {
             showContent: true,
@@ -652,13 +804,90 @@ async function fetchOwnedDragonBalls(owner: string): Promise<OwnedDragonBall[]> 
       return {
         objectId: data.objectId,
         epoch: Number(fields.epoch),
-        starIndex: Number(fields.star_index),
+        shardIndex: Number(fields.shard_index),
         gateId: normalizeAddress(fields.gate_id),
         gateName: decodeMoveString(fields.gate_name),
         collector: normalizeAddress(fields.collector),
         delivered: Boolean(fields.delivered),
         deliveredAt: Number(fields.delivered_at || 0),
-      } satisfies OwnedDragonBall;
+      } satisfies OwnedSinguShard;
+    })
+    .filter(Boolean);
+}
+
+async function fetchOwnedSinguShardTokens(owner: string): Promise<OwnedSinguShardToken[]> {
+  const response = await fetch(RPC_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "suix_getOwnedObjects",
+      params: [
+        normalizeAddress(owner),
+        {
+          filter: {
+            StructType: SINGU_SHARD_TOKEN_TYPE,
+          },
+          options: {
+            showType: true,
+          },
+        },
+      ],
+    }),
+  });
+
+  const json = await response.json();
+  const records = json.result?.data || [];
+  return records
+    .map((record: any) => {
+      const data = record.data;
+      if (!data?.objectId) {
+        return null;
+      }
+      return { objectId: data.objectId } satisfies OwnedSinguShardToken;
+    })
+    .filter(Boolean);
+}
+
+async function fetchOwnedRegistrationPasses(owner: string): Promise<OwnedRegistrationPass[]> {
+  const response = await fetch(RPC_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "suix_getOwnedObjects",
+      params: [
+        normalizeAddress(owner),
+        {
+          filter: {
+            StructType: REGISTRATION_PASS_TYPE,
+          },
+          options: {
+            showContent: true,
+          },
+        },
+      ],
+    }),
+  });
+
+  const json = await response.json();
+  const records = json.result?.data || [];
+  return records
+    .map((record: any) => {
+      const data = record.data;
+      const fields = data?.content?.fields;
+      if (!data?.objectId || !fields) {
+        return null;
+      }
+      return {
+        objectId: data.objectId,
+        epoch: Number(fields.epoch),
+        mode: Number(fields.mode),
+        feePaidLux: Number(fields.fee_paid_lux),
+        issuedAt: Number(fields.issued_at),
+      } satisfies OwnedRegistrationPass;
     })
     .filter(Boolean);
 }
@@ -700,7 +929,9 @@ export function HuntBoard() {
   const [claimLoading, setClaimLoading] = useState(false);
   const [claimError, setClaimError] = useState<string | null>(null);
   const [claimDigest, setClaimDigest] = useState<string | null>(null);
-  const [ownedBalls, setOwnedBalls] = useState<OwnedDragonBall[]>([]);
+  const [ownedBalls, setOwnedBalls] = useState<OwnedSinguShard[]>([]);
+  const [ownedShardTokens, setOwnedShardTokens] = useState<OwnedSinguShardToken[]>([]);
+  const [ownedRegistrationPasses, setOwnedRegistrationPasses] = useState<OwnedRegistrationPass[]>([]);
   const [ownedBallLoading, setOwnedBallLoading] = useState(false);
   const [deliverLoadingIndex, setDeliverLoadingIndex] = useState<number | null>(null);
   const [deliverError, setDeliverError] = useState<string | null>(null);
@@ -740,6 +971,7 @@ export function HuntBoard() {
   const [registerLoading, setRegisterLoading] = useState(false);
   const [registerError, setRegisterError] = useState<string | null>(null);
   const [registerDigest, setRegisterDigest] = useState<string | null>(null);
+  const [registerSuccessLabel, setRegisterSuccessLabel] = useState<string | null>(null);
 
   const { isConnected, walletAddress, handleConnect } = useConnection();
   const { assembly, loading: assemblyLoading } = useSmartObject();
@@ -756,12 +988,16 @@ export function HuntBoard() {
       setGameState(state);
       setError(null);
       if (state) {
+        const shouldLoadRegistration = homeRoute;
+        const shouldLoadTeamState = state.hunt_mode === 2 && Boolean(walletAddress);
         const [registration, teamState] = await Promise.all([
-          fetchRegistrationState(Number(state.current_epoch), walletAddress),
-          state.hunt_mode === 2
+          shouldLoadRegistration
+            ? fetchRegistrationState(Number(state.current_epoch), walletAddress)
+            : Promise.resolve(null),
+          shouldLoadTeamState
             ? fetchActiveTeamRaceState(
                 Number(state.current_epoch),
-                state.ball_gates.length,
+                state.shard_gates.length,
                 walletAddress,
               )
             : Promise.resolve({
@@ -772,6 +1008,13 @@ export function HuntBoard() {
         ]);
         setRegistrationState(registration);
         setActiveTeamState(teamState);
+      } else {
+        setRegistrationState(null);
+        setActiveTeamState({
+          assignment: null,
+          roster: null,
+          claimedIndices: [],
+        });
       }
     } catch (err: any) {
       setError(err.message || String(err));
@@ -793,27 +1036,37 @@ export function HuntBoard() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [walletAddress]);
+  }, [homeRoute, walletAddress]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadOwnedBalls() {
-      if (!walletAddress || !isConnected) {
+      if (!walletAddress || !isConnected || !homeRoute) {
         setOwnedBalls([]);
+        setOwnedShardTokens([]);
+        setOwnedRegistrationPasses([]);
         return;
       }
 
       setOwnedBallLoading(true);
       try {
-        const balls = await fetchOwnedDragonBalls(walletAddress);
+        const [balls, shardTokens, registrationPasses] = await Promise.all([
+          fetchOwnedSinguShards(walletAddress),
+          fetchOwnedSinguShardTokens(walletAddress),
+          fetchOwnedRegistrationPasses(walletAddress),
+        ]);
         if (!cancelled) {
           setOwnedBalls(balls);
+          setOwnedShardTokens(shardTokens);
+          setOwnedRegistrationPasses(registrationPasses);
         }
       } catch (err) {
         if (!cancelled) {
           console.error(err);
           setOwnedBalls([]);
+          setOwnedShardTokens([]);
+          setOwnedRegistrationPasses([]);
         }
       } finally {
         if (!cancelled) {
@@ -826,25 +1079,36 @@ export function HuntBoard() {
     return () => {
       cancelled = true;
     };
-  }, [isConnected, walletAddress, claimDigest, deliverDigest, gameState?.current_epoch]);
+  }, [homeRoute, isConnected, walletAddress, claimDigest, deliverDigest, gameState?.current_epoch]);
 
-  const countdown = useCountdown(gameState?.hunt_end_time);
+  const huntCountdown = useCountdown(gameState?.hunt_end_time);
+  const registrationCountdown = useCountdown(
+    registrationState?.regEndTime != null ? String(registrationState.regEndTime) : undefined,
+  );
+  const timeExpired = huntCountdown === "EXPIRED";
+  const registrationOpen =
+    Boolean(registrationState?.isOpen) &&
+    (registrationState?.regEndTime == null || Number(registrationState.regEndTime) > Date.now());
+  const effectivelyActive = !!gameState?.hunt_active && !timeExpired;
+  const countdown = registrationOpen ? registrationCountdown || "REGISTRATION OPEN" : huntCountdown;
+  const nextSession = useNextSession(!effectivelyActive && !registrationOpen);
+  const nextRegCountdown = useCountdownTo(nextSession?.regTime ?? null);
   const collectedCount =
-    gameState?.ball_gates.filter((gate) => gate.ball_collected).length || 0;
+    gameState?.shard_gates.filter((gate) => gate.ball_collected).length || 0;
   const deliveredCount =
-    gameState?.ball_gates.filter((gate) => gate.ball_delivered).length || 0;
+    gameState?.shard_gates.filter((gate) => gate.ball_delivered).length || 0;
   const requiredSinguCount = Number(gameState?.required_singu_count || 0);
   const teamClaimedIndices = new Set(activeTeamState.claimedIndices);
   const activeIndex =
     gameState?.hunt_mode === 2
-      ? gameState?.ball_gates.findIndex((gate) => gate.gate_id === assemblyId) ?? -1
-      : gameState?.ball_gates.findIndex(
+      ? gameState?.shard_gates.findIndex((gate) => gate.gate_id === assemblyId) ?? -1
+      : gameState?.shard_gates.findIndex(
             (gate) => gate.gate_id === assemblyId && !gate.ball_collected,
           ) ?? -1;
-  const activeGate = activeIndex >= 0 ? gameState?.ball_gates[activeIndex] : null;
+  const activeGate = activeIndex >= 0 ? gameState?.shard_gates[activeIndex] : null;
   const matchedGateIndex =
-    gameState?.ball_gates.findIndex((gate) => gate.gate_id === assemblyId) ?? -1;
-  const matchedGate = matchedGateIndex >= 0 ? gameState?.ball_gates[matchedGateIndex] : null;
+    gameState?.shard_gates.findIndex((gate) => gate.gate_id === assemblyId) ?? -1;
+  const matchedGate = matchedGateIndex >= 0 ? gameState?.shard_gates[matchedGateIndex] : null;
   const homeGateMatched =
     assemblyId &&
     (!!gameState &&
@@ -855,6 +1119,14 @@ export function HuntBoard() {
   const allDelivered =
     requiredSinguCount > 0 && deliveredCount >= requiredSinguCount;
   const currentEpoch = Number(gameState?.current_epoch || 0);
+  const playerRegistrationPass =
+    registrationState == null
+      ? null
+      : ownedRegistrationPasses.find(
+          (pass) =>
+            pass.epoch === registrationState.nextEpoch &&
+            pass.mode === registrationState.mode,
+        ) ?? null;
   const deliverableBalls = ownedBalls
     .filter(
       (ball) =>
@@ -862,7 +1134,7 @@ export function HuntBoard() {
         !ball.delivered &&
         normalizeAddress(ball.collector) === normalizedWallet,
     )
-    .sort((a, b) => a.starIndex - b.starIndex);
+    .sort((a, b) => a.shardIndex - b.shardIndex);
   const completableBalls = ownedBalls
     .filter(
       (ball) =>
@@ -870,10 +1142,11 @@ export function HuntBoard() {
         ball.delivered &&
         normalizeAddress(ball.collector) === normalizedWallet,
     )
-    .sort((a, b) => a.starIndex - b.starIndex);
+    .sort((a, b) => a.shardIndex - b.shardIndex);
   const canComplete =
     requiredSinguCount > 0 &&
     completableBalls.length >= requiredSinguCount &&
+    ownedShardTokens.length >= requiredSinguCount &&
     !completeDigest;
   const activeTeamCompleted = activeIndex >= 0 && teamClaimedIndices.has(activeIndex);
   const activeTeamRosterVisible =
@@ -901,7 +1174,7 @@ export function HuntBoard() {
       return null;
     }
     if (!gateSlug) {
-      setTicketError("Missing gate slug in URL. Expected /gates/<slug>?v=2");
+      setTicketError("Missing gate slug in URL. Expected /singu-xxx-NNN?v=2");
       return null;
     }
     if (!walletAddress || !gameState || activeIndex < 0) {
@@ -949,7 +1222,7 @@ export function HuntBoard() {
       return null;
     }
     if (!gateSlug) {
-      setDeliverError("Missing home gate slug in URL. Expected /gates/home?v=2");
+      setDeliverError("Missing home gate slug in URL. Expected /singu-home?v=2");
       return null;
     }
 
@@ -977,26 +1250,81 @@ export function HuntBoard() {
   }
 
   async function registerForHunt() {
-    if (!isConnected || !gameState) {
+    if (!isConnected || !gameState || !walletAddress) {
       setRegisterError("Connect wallet first");
+      return;
+    }
+    if (!registrationState?.mode) {
+      setRegisterError("Registration mode is unavailable");
+      return;
+    }
+    if (EVE_COIN_TYPE.startsWith("0x0::")) {
+      setRegisterError("Missing VITE_EVE_COIN_TYPE");
       return;
     }
 
     setRegisterLoading(true);
     setRegisterError(null);
     setRegisterDigest(null);
+    setRegisterSuccessLabel(null);
     try {
       const tx = new Transaction();
-      tx.moveCall({
-        target: `${PACKAGE_ID}::singuhunt::register_for_hunt`,
-        arguments: [tx.object(GAME_STATE_ID), tx.object("0x6")],
-      });
+      let successLabel = "Registration Activated";
+
+      if (playerRegistrationPass) {
+        tx.moveCall({
+          target: `${PACKAGE_ID}::singuhunt::activate_registration`,
+          arguments: [
+            tx.object(GAME_STATE_ID),
+            tx.object(playerRegistrationPass.objectId),
+            tx.object("0x6"),
+          ],
+        });
+      } else {
+        const requiredFee = MODE_REGISTRATION_FEE_EVE[registrationState.mode];
+        const coins = await rpcCall<{ data?: { coinObjectId: string; balance: string }[] }>(
+          "suix_getCoins",
+          [walletAddress, EVE_COIN_TYPE, null, 50],
+        );
+        const eveCoins = coins?.data ?? [];
+        if (eveCoins.length === 0) {
+          throw new Error("No EVE coins found in this wallet");
+        }
+
+        const available = eveCoins.reduce((sum, coin) => sum + BigInt(coin.balance), 0n);
+        if (available < requiredFee) {
+          throw new Error(
+            `Insufficient EVE. Need ${formatBalance(requiredFee)} EVE, wallet has ${formatBalance(available)} EVE`,
+          );
+        }
+
+        const primaryCoin = tx.object(eveCoins[0].coinObjectId);
+        if (eveCoins.length > 1) {
+          tx.mergeCoins(
+            primaryCoin,
+            eveCoins.slice(1).map((coin) => tx.object(coin.coinObjectId)),
+          );
+        }
+
+        const [feeCoin] = tx.splitCoins(primaryCoin, [requiredFee]);
+        tx.moveCall({
+          target: `${PACKAGE_ID}::singuhunt::buy_registration_pass_eve`,
+          typeArguments: [EVE_COIN_TYPE],
+          arguments: [
+            tx.object(GAME_STATE_ID),
+            feeCoin,
+            tx.object("0x6"),
+          ],
+        });
+        successLabel = "Registration Pass Purchased";
+      }
 
       const result = (await dAppKit.signAndExecuteTransaction({
         transaction: tx,
       })) as any;
 
       setRegisterDigest(result.digest ?? result?.Transaction?.digest ?? null);
+      setRegisterSuccessLabel(successLabel);
       await refetchGameState();
     } catch (err: any) {
       setRegisterError(err.message || String(err));
@@ -1008,6 +1336,10 @@ export function HuntBoard() {
   async function claimCurrentGate() {
     if (!gameState || activeIndex < 0 || !isConnected || !gateSlug) {
       setClaimError("Missing connected wallet or active gate context");
+      return;
+    }
+    if (!SINGU_SHARD_TREASURY_ID) {
+      setClaimError("Missing VITE_SINGU_SHARD_TREASURY_ID");
       return;
     }
 
@@ -1022,9 +1354,10 @@ export function HuntBoard() {
 
       const tx = new Transaction();
       tx.moveCall({
-        target: `${PACKAGE_ID}::singuhunt::collect_ball`,
+        target: `${PACKAGE_ID}::singuhunt::collect_singu_shard`,
         arguments: [
           tx.object(GAME_STATE_ID),
+          tx.object(SINGU_SHARD_TREASURY_ID),
           tx.pure.u64(activeIndex),
           tx.pure.address(claimTicket.assemblyId),
           tx.pure.u64(BigInt(claimTicket.expiresAtMs)),
@@ -1041,7 +1374,12 @@ export function HuntBoard() {
       setClaimDigest(result.digest ?? result?.Transaction?.digest ?? null);
       await refetchGameState();
       if (walletAddress) {
-        setOwnedBalls(await fetchOwnedDragonBalls(walletAddress));
+        const [balls, shardTokens] = await Promise.all([
+          fetchOwnedSinguShards(walletAddress),
+          fetchOwnedSinguShardTokens(walletAddress),
+        ]);
+        setOwnedBalls(balls);
+        setOwnedShardTokens(shardTokens);
       }
     } catch (err: any) {
       setClaimError(err.message || String(err));
@@ -1050,27 +1388,33 @@ export function HuntBoard() {
     }
   }
 
-  async function deliverBall(ball: OwnedDragonBall) {
+  async function deliverSinguShard(ball: OwnedSinguShard) {
     if (!homeRoute || !homeGateMatched || !isConnected) {
       setDeliverError("Open the home gate route from the configured start/end gate");
       return;
     }
 
-    setDeliverLoadingIndex(ball.starIndex);
+    if (ownedShardTokens.length === 0) {
+      setDeliverError("No SinguShard token found in this wallet");
+      return;
+    }
+
+    setDeliverLoadingIndex(ball.shardIndex);
     setDeliverError(null);
     setDeliverDigest(null);
     try {
-      const deliverTicket = await requestDeliverTicket(ball.starIndex);
+      const deliverTicket = await requestDeliverTicket(ball.shardIndex);
       if (!deliverTicket) {
         return;
       }
 
       const tx = new Transaction();
       tx.moveCall({
-        target: `${PACKAGE_ID}::singuhunt::deliver_ball`,
+        target: `${PACKAGE_ID}::singuhunt::deliver_singu_shard`,
         arguments: [
           tx.object(GAME_STATE_ID),
           tx.object(ball.objectId),
+          tx.object(ownedShardTokens[0].objectId),
           tx.pure.address(deliverTicket.assemblyId),
           tx.pure.u64(BigInt(deliverTicket.expiresAtMs)),
           tx.pure.u64(BigInt(deliverTicket.nonce)),
@@ -1086,7 +1430,12 @@ export function HuntBoard() {
       setDeliverDigest(result.digest ?? result?.Transaction?.digest ?? null);
       await refetchGameState();
       if (walletAddress) {
-        setOwnedBalls(await fetchOwnedDragonBalls(walletAddress));
+        const [balls, shardTokens] = await Promise.all([
+          fetchOwnedSinguShards(walletAddress),
+          fetchOwnedSinguShardTokens(walletAddress),
+        ]);
+        setOwnedBalls(balls);
+        setOwnedShardTokens(shardTokens);
       }
     } catch (err: any) {
       setDeliverError(err.message || String(err));
@@ -1101,19 +1450,30 @@ export function HuntBoard() {
       return;
     }
 
+    if (!SINGU_SHARD_TREASURY_ID || !ACHIEVEMENT_TREASURY_ID) {
+      setCompleteError("Missing treasury object IDs for shard or achievement");
+      return;
+    }
+
     setCompleteLoading(true);
     setCompleteError(null);
     setCompleteDigest(null);
     try {
       const tx = new Transaction();
-      const ballArgs = completableBalls
+      const shardRecordArgs = completableBalls
         .slice(0, requiredSinguCount)
         .map((ball) => tx.object(ball.objectId));
+      const shardTokenArgs = ownedShardTokens
+        .slice(0, requiredSinguCount)
+        .map((token) => tx.object(token.objectId));
       tx.moveCall({
         target: `${PACKAGE_ID}::singuhunt::claim_achievement`,
         arguments: [
           tx.object(GAME_STATE_ID),
-          tx.makeMoveVec({ elements: ballArgs }),
+          tx.object(SINGU_SHARD_TREASURY_ID),
+          tx.object(ACHIEVEMENT_TREASURY_ID),
+          tx.makeMoveVec({ elements: shardRecordArgs }),
+          tx.makeMoveVec({ elements: shardTokenArgs }),
           tx.object("0x6"),
         ],
       });
@@ -1125,7 +1485,12 @@ export function HuntBoard() {
       setCompleteDigest(result.digest ?? result?.Transaction?.digest ?? null);
       await refetchGameState();
       if (walletAddress) {
-        setOwnedBalls(await fetchOwnedDragonBalls(walletAddress));
+        const [balls, shardTokens] = await Promise.all([
+          fetchOwnedSinguShards(walletAddress),
+          fetchOwnedSinguShardTokens(walletAddress),
+        ]);
+        setOwnedBalls(balls);
+        setOwnedShardTokens(shardTokens);
       }
     } catch (err: any) {
       setCompleteError(err.message || String(err));
@@ -1137,6 +1502,10 @@ export function HuntBoard() {
   async function completeTeamRace() {
     if (!gameState || !canFinishTeamRace) {
       setCompleteError("Cannot complete team race yet");
+      return;
+    }
+    if (!ACHIEVEMENT_TREASURY_ID) {
+      setCompleteError("Missing VITE_ACHIEVEMENT_TREASURY_ID");
       return;
     }
 
@@ -1154,6 +1523,7 @@ export function HuntBoard() {
         target: `${PACKAGE_ID}::singuhunt::claim_team_achievement`,
         arguments: [
           tx.object(GAME_STATE_ID),
+          tx.object(ACHIEVEMENT_TREASURY_ID),
           tx.pure.address(deliverTicket.assemblyId),
           tx.pure.u64(BigInt(deliverTicket.expiresAtMs)),
           tx.pure.u64(BigInt(deliverTicket.nonce)),
@@ -1242,6 +1612,10 @@ export function HuntBoard() {
 
   async function claimDecryptAchievement() {
     if (!decryptTicket || !gameState) return;
+    if (!ACHIEVEMENT_TREASURY_ID) {
+      setDecryptClaimError("Missing VITE_ACHIEVEMENT_TREASURY_ID");
+      return;
+    }
     setDecryptClaimLoading(true);
     setDecryptClaimError(null);
     setDecryptClaimDigest(null);
@@ -1251,6 +1625,7 @@ export function HuntBoard() {
         target: `${PACKAGE_ID}::singuhunt::claim_decrypt_achievement`,
         arguments: [
           tx.object(GAME_STATE_ID),
+          tx.object(ACHIEVEMENT_TREASURY_ID),
           tx.pure.u64(BigInt(decryptTicket.expiresAtMs)),
           tx.pure.u64(BigInt(decryptTicket.nonce)),
           tx.pure.vector("u8", Array.from(base64ToBytes(decryptTicket.signature))),
@@ -1295,8 +1670,8 @@ export function HuntBoard() {
   return (
     <>
       {showModeIntro != null && (
-        <ModeIntroModal
-          mode={showModeIntro}
+        <GameGuideModal
+          initialMode={showModeIntro}
           onClose={() => setShowModeIntro(null)}
         />
       )}
@@ -1383,6 +1758,15 @@ export function HuntBoard() {
         </div>
       )}
 
+      <div className="guide-row">
+        <button
+          className="header-guide-btn"
+          onClick={() => setShowModeIntro(gameState.hunt_mode)}
+        >
+          GAME GUIDE
+        </button>
+      </div>
+
       <div className="status-bar">
         <div className="status-item">
           <div className="status-label">Session</div>
@@ -1391,22 +1775,19 @@ export function HuntBoard() {
         <div className="status-item">
           <div className="status-label">Status</div>
           <div className="status-value">
-            {gameState.hunt_active ? "ACTIVE" : "INACTIVE"}
+            {registrationOpen
+              ? "REGISTRATION OPEN"
+              : effectivelyActive
+                ? "ACTIVE"
+                : timeExpired
+                  ? "EXPIRED"
+                  : "INACTIVE"}
           </div>
         </div>
         <div className="status-item">
           <div className="status-label">Mode</div>
-          <div className="status-value mode-value">
-            <span>{MODE_LABELS[gameState.hunt_mode] || "SOLO RACE"}</span>
-            {MODE_INTRO[gameState.hunt_mode] && (
-              <button
-                className="mode-info-btn"
-                onClick={() => setShowModeIntro(gameState.hunt_mode)}
-                title="How to play"
-              >
-                ?
-              </button>
-            )}
+          <div className="status-value">
+            {MODE_LABELS[gameState.hunt_mode] || "SOLO RACE"}
           </div>
         </div>
         <div className="status-item">
@@ -1420,13 +1801,13 @@ export function HuntBoard() {
         <div className="status-item">
           <div className="status-label">Claimed</div>
           <div className="status-value">
-            {collectedCount} / {requiredSinguCount || gameState.ball_gates.length}
+            {collectedCount} / {requiredSinguCount || gameState.shard_gates.length}
           </div>
         </div>
         <div className="status-item">
           <div className="status-label">Delivered</div>
           <div className="status-value">
-            {deliveredCount} / {requiredSinguCount || gameState.ball_gates.length}
+            {deliveredCount} / {requiredSinguCount || gameState.shard_gates.length}
           </div>
         </div>
         <div className="status-item">
@@ -1442,42 +1823,49 @@ export function HuntBoard() {
       <div className="bulletin-board">
         <h3>HUNT WINDOW</h3>
         <div className="timer">{countdown}</div>
-        {(() => {
-          const startMeta = getGateMetadata(gameState.start_gate);
-          const endMeta = getGateMetadata(gameState.end_gate);
-          return (
-            <>
-              <div className="context-row">
-                Start Gate: {gameState.start_gate_name || gameState.start_gate}
-                {startMeta && ` — ${startMeta.solarSystem} [${startMeta.coordinates.x}, ${startMeta.coordinates.y}, ${startMeta.coordinates.z}]`}
-              </div>
-              <div className="context-row">
-                End Gate: {gameState.end_gate_name || gameState.end_gate}
-                {endMeta && ` — ${endMeta.solarSystem} [${endMeta.coordinates.x}, ${endMeta.coordinates.y}, ${endMeta.coordinates.z}]`}
-              </div>
-            </>
-          );
-        })()}
       </div>
+
+      {!effectivelyActive && !registrationOpen && nextSession && (
+        <div className="bulletin-board next-session-panel">
+          <h3>NEXT SESSION</h3>
+          <div className="timer">{nextRegCountdown === "NOW" ? "REGISTRATION OPEN" : nextRegCountdown}</div>
+          <div className="context-row">
+            Mode: {nextSession.label}
+          </div>
+          <div className="context-row">
+            Registration opens: {nextSession.regTime.toLocaleString()}
+          </div>
+          <div className="context-row">
+            Game starts: {nextSession.gameTime.toLocaleString()}
+          </div>
+          <div className="context-row">
+            Duration: {nextSession.durationMin} min
+          </div>
+        </div>
+      )}
 
       {homeRoute && (
         <div className="bulletin-board">
           <h3>HOME GATE BULLETIN</h3>
           <div className="context-row">
-            Route: /gates/{gateSlug}?v={CACHE_VERSION}
+            Route: /{gateSlug}?v={CACHE_VERSION}
           </div>
           <div className="context-row">
             Home Gate Verified: {homeGateMatched ? "YES" : "NO"}
           </div>
           <div className="context-row">
-            Claimed: {collectedCount} / {requiredSinguCount || gameState.ball_gates.length}
+            Claimed: {collectedCount} / {requiredSinguCount || gameState.shard_gates.length}
           </div>
           <div className="context-row">
-            Delivered: {deliveredCount} / {requiredSinguCount || gameState.ball_gates.length}
+            Delivered: {deliveredCount} / {requiredSinguCount || gameState.shard_gates.length}
           </div>
-          <div className={`home-status ${allDelivered ? "complete" : "open"}`}>
+          <div className={`home-status ${allDelivered ? "complete" : registrationOpen || effectivelyActive ? "open" : "expired"}`}>
             {allDelivered
               ? "ALL REQUIRED SINGU HAVE BEEN RETURNED TO HOME GATE"
+              : registrationOpen
+              ? "REGISTRATION OPEN — CONNECT WALLET TO BUY OR ACTIVATE YOUR PASS"
+              : !effectivelyActive
+              ? "HUNT EXPIRED — WAITING FOR NEXT SESSION"
               : "HUNT STILL IN PROGRESS"}
           </div>
           <p className="hint">
@@ -1485,16 +1873,19 @@ export function HuntBoard() {
             Singu gates and current on-chain delivery progress.
           </p>
 
-          {registrationState?.mode === 2 && (
+          {registrationState?.mode != null && (
             <div className="delivery-panel">
-              <h3>TEAM RACE REGISTRATION</h3>
+              <h3>{MODE_LABELS[registrationState.mode] || "HUNT"} REGISTRATION</h3>
               <div className="context-row">
                 Registration: {registrationState.isOpen ? "OPEN" : "CLOSED"}
               </div>
               <div className="context-row">
+                Entry fee: {formatBalance(MODE_REGISTRATION_FEE_EVE[registrationState.mode])} EVE
+              </div>
+              <div className="context-row">
                 Total registered: {registrationState.regCount}
               </div>
-              {!registrationState.isOpen && (
+              {registrationState.mode === 2 && !registrationState.isOpen && (
                 <>
                   <div className="context-row">
                     Successful registered: {registrationState.successfulRegCount}
@@ -1519,17 +1910,31 @@ export function HuntBoard() {
                   Your registration number: #{registrationState.playerPosition}
                 </div>
               )}
-              {registrationState.assignment && !registrationState.assignment.active && (
+              {playerRegistrationPass && !registrationState.playerRegistered && (
+                <div className="ticket-card">
+                  <div className="status-label">Registration Pass Ready</div>
+                  <div className="context-row">Pass object: {playerRegistrationPass.objectId}</div>
+                  <div className="context-row">Epoch: {playerRegistrationPass.epoch}</div>
+                  <div className="context-row">
+                    Fee paid: {formatBalance(playerRegistrationPass.feePaidLux)} EVE
+                  </div>
+                </div>
+              )}
+              {registrationState.mode === 2 &&
+                registrationState.assignment &&
+                !registrationState.assignment.active && (
                 <p className="error-text">
                   Registration failed for this round. Your slot was trimmed because the final count could not form a full 3-player team.
                 </p>
               )}
-              {registrationState.assignment?.active && registrationState.assignment.reveal_at > Date.now() && (
+              {registrationState.mode === 2 &&
+                registrationState.assignment?.active &&
+                registrationState.assignment.reveal_at > Date.now() && (
                 <p className="hint">
                   Team assignment is locked. Teammates will be revealed when the match starts.
                 </p>
               )}
-              {registrationState.roster && (
+              {registrationState.mode === 2 && registrationState.roster && (
                 <div className="ticket-card">
                   <div className="status-label">Your Squad</div>
                   <div className="context-row">{registrationState.roster.member_1}</div>
@@ -1541,23 +1946,35 @@ export function HuntBoard() {
                 <button className="claim-btn" onClick={handleConnect}>
                   CONNECT WALLET
                 </button>
-              ) : registrationState.isOpen ? (
+              ) : registrationState.isOpen && !registrationState.playerRegistered ? (
                 <button
                   className="claim-btn"
                   onClick={registerForHunt}
-                  disabled={registerLoading || registrationState.playerRegistered}
+                  disabled={registerLoading}
                 >
-                  {registrationState.playerRegistered
-                    ? "REGISTERED"
-                    : registerLoading
-                      ? "REGISTERING..."
-                      : "REGISTER FOR TEAM RACE"}
+                  {registerLoading
+                    ? "SUBMITTING..."
+                    : playerRegistrationPass
+                      ? "ACTIVATE REGISTRATION PASS"
+                      : "BUY REGISTRATION PASS"}
                 </button>
-              ) : null}
-              {registerError && <p className="error-text">{registerError}</p>}
-              {registerDigest && (
+              ) : registrationState.playerRegistered ? (
                 <div className="ticket-card">
-                  <div className="status-label">Registration Submitted</div>
+                  <div className="status-label">Registration Confirmed</div>
+                  <div className="context-row">
+                    Wallet: {normalizeAddress(walletAddress)}
+                  </div>
+                </div>
+              ) : null}
+              {isConnected && registrationState.isOpen && !registrationState.playerRegistered && !playerRegistrationPass && (
+                <p className="hint">
+                  Connect wallet, pay the mode fee, and receive a Registration Pass for this session.
+                </p>
+              )}
+              {registerError && <p className="error-text">{registerError}</p>}
+              {registerDigest && registerSuccessLabel && (
+                <div className="ticket-card">
+                  <div className="status-label">{registerSuccessLabel}</div>
                   <div className="context-row">Digest: {registerDigest}</div>
                 </div>
               )}
@@ -1579,16 +1996,16 @@ export function HuntBoard() {
                 <div key={ball.objectId} className="delivery-card">
                   <div className="delivery-copy">
                     <div className="delivery-title">
-                      Singu #{ball.starIndex + 1} from {ball.gateName || ball.gateId}
+                      Singu #{ball.shardIndex + 1} from {ball.gateName || ball.gateId}
                     </div>
                     <div className="context-row">Object: {ball.objectId}</div>
                   </div>
                   <button
                     className="collect-btn"
-                    onClick={() => void deliverBall(ball)}
-                    disabled={deliverLoadingIndex === ball.starIndex}
+                    onClick={() => void deliverSinguShard(ball)}
+                    disabled={deliverLoadingIndex === ball.shardIndex}
                   >
-                    {deliverLoadingIndex === ball.starIndex ? "DELIVERING..." : "DELIVER"}
+                    {deliverLoadingIndex === ball.shardIndex ? "DELIVERING..." : "DELIVER"}
                   </button>
                 </div>
               ))}
@@ -1667,7 +2084,7 @@ export function HuntBoard() {
           )}
 
           <div className="singularity-grid">
-            {gameState.ball_gates.map((gate, index) => {
+            {gameState.shard_gates.map((gate, index) => {
               const meta = getGateMetadata(gate.gate_id);
               const teamDone = teamClaimedIndices.has(index);
               return (
@@ -1745,7 +2162,7 @@ export function HuntBoard() {
           Assembly ID: {assemblyId || "Unavailable"}
         </div>
         <div className="context-row">
-          Gate Route: {gateSlug ? `/gates/${gateSlug}?v=${CACHE_VERSION}` : "Missing"}
+          Gate Route: {gateSlug ? `/${gateSlug}?v=${CACHE_VERSION}` : "Missing"}
         </div>
         {!isConnected && (
           <button className="collect-btn" onClick={handleConnect}>
@@ -1794,7 +2211,7 @@ export function HuntBoard() {
         )}
         {!gateSlug && (
           <p className="error-text">
-            URL must be a versioned gate route like `/gates/seven-henna?v=2`.
+            URL must be a versioned gate route like `/singu-home?v=2`.
           </p>
         )}
         {ticketError && <p className="error-text">{ticketError}</p>}
@@ -1828,7 +2245,7 @@ export function HuntBoard() {
       </div>
 
       {/* Deep Decrypt Quiz Panel — shown on any page when mode is 3 */}
-      {gameState.hunt_mode === 3 && gameState.hunt_active && (
+      {gameState.hunt_mode === 3 && effectivelyActive && (
         <div className="bulletin-board decrypt-panel">
           <h3>DEEP DECRYPT CHALLENGE</h3>
           {decryptWinnerInfo && (
@@ -1909,7 +2326,7 @@ export function HuntBoard() {
       <div className="bulletin-board">
         <h3>ACTIVE GATES</h3>
         <div className="singularity-grid">
-          {gameState.ball_gates.map((gate, index) => {
+          {gameState.shard_gates.map((gate, index) => {
             const meta = getGateMetadata(gate.gate_id);
             const teamDone = teamClaimedIndices.has(index);
             return (

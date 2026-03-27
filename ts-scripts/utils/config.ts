@@ -1,5 +1,5 @@
 import { config } from "dotenv";
-import { getFullnodeUrl, SuiClient } from "@mysten/sui/client";
+import { SuiJsonRpcClient, getJsonRpcFullnodeUrl } from "@mysten/sui/jsonRpc";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { decodeSuiPrivateKey } from "@mysten/sui/cryptography";
 
@@ -17,10 +17,10 @@ function getEnvOptional(key: string): string | undefined {
   return process.env[key];
 }
 
-export function getSuiClient(): SuiClient {
+export function getSuiClient(): SuiJsonRpcClient {
   const rpcUrl =
-    getEnvOptional("SUI_RPC_URL") || getFullnodeUrl("testnet");
-  return new SuiClient({ url: rpcUrl });
+    getEnvOptional("SUI_RPC_URL") || getJsonRpcFullnodeUrl("testnet");
+  return new SuiJsonRpcClient({ url: rpcUrl });
 }
 
 export function getAdminKeypair(): Ed25519Keypair {
@@ -39,3 +39,5 @@ export const SINGUHUNT_PACKAGE_ID = getEnv("SINGUHUNT_PACKAGE_ID");
 export const GAME_STATE_ID = getEnv("GAME_STATE_ID");
 export const ADMIN_CAP_ID = getEnv("ADMIN_CAP_ID");
 export const BULLETIN_CONFIG_ID = getEnvOptional("BULLETIN_CONFIG_ID") || "";
+export const SINGU_SHARD_TREASURY_ID = getEnvOptional("SINGU_SHARD_TREASURY_ID") || "";
+export const ACHIEVEMENT_TREASURY_ID = getEnvOptional("ACHIEVEMENT_TREASURY_ID") || "";

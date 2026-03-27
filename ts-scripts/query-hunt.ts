@@ -45,10 +45,10 @@ async function main() {
 
   const fields = (gameState.data.content as any).fields;
   const gatePool = Array.isArray(fields.gate_pool) ? fields.gate_pool.map(extractGate) : [];
-  const activeBallGates = Array.isArray(fields.ball_gates)
-    ? fields.ball_gates.map(extractGate)
+  const activeShardGates = Array.isArray(fields.shard_gates)
+    ? fields.shard_gates.map(extractGate)
     : [];
-  const deliveredCount = activeBallGates.filter(
+  const deliveredCount = activeShardGates.filter(
     (gate: ReturnType<typeof extractGate>) => gate.ballDelivered,
   ).length;
 
@@ -77,7 +77,7 @@ async function main() {
   });
 
   console.log(`\nToday's Active ${fields.required_singu_count} Gates:`);
-  activeBallGates.forEach((gate: ReturnType<typeof extractGate>, index: number) => {
+  activeShardGates.forEach((gate: ReturnType<typeof extractGate>, index: number) => {
     const status = gate.ballDelivered
       ? `DELIVERED by ${gate.deliverer}`
       : gate.ballCollected

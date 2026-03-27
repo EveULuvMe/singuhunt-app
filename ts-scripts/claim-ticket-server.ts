@@ -12,9 +12,11 @@ import {
   normalizeAddress,
   randomNonce,
   signClaimTicket,
+  signDeliverTicket,
   verifyDevContextSignature,
   type ClaimTicket,
   type DevAssemblyContext,
+  type DeliverTicket,
 } from "./utils/claim-ticket.js";
 
 config();
@@ -73,6 +75,19 @@ function json(
 }
 
 function serializeTicket(ticket: ClaimTicket) {
+  return {
+    playerAddress: ticket.playerAddress,
+    epoch: ticket.epoch.toString(),
+    ballIndex: ticket.ballIndex.toString(),
+    assemblyId: ticket.assemblyId,
+    expiresAtMs: ticket.expiresAtMs.toString(),
+    nonce: ticket.nonce.toString(),
+    signature: ticket.signature,
+    signerAddress: ticket.signerAddress,
+  };
+}
+
+function serializeDeliverTicket(ticket: DeliverTicket) {
   return {
     playerAddress: ticket.playerAddress,
     epoch: ticket.epoch.toString(),
@@ -183,6 +198,39 @@ const server = createServer(async (request, response) => {
       });
 
       json(response, 200, serializeTicket(ticket));
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unknown error";
+      json(response, 400, { ok: false, error: message });
+    }
+    return;
+  }
+
+  if (request.method === "POST" && request.url === "/deliver-ticket") {
+    try {
+      const body = await readJsonBody<ClaimTicketRequest>(request);
+      if (!body.playerAddress) {
+        throw new Error("Missing playerAddress");
+      }
+      if (body.ballIndex == null || !Number.isInteger(body.ballIndex)) {
+        throw new Error("Missing integer ballIndex");
+      }
+      if (body.epoch == null) {
+        throw new Error("Missing epoch");
+      }
+
+      const context = resolveTrustedContext(request, body);
+      const now = BigInt(Date.now());
+      const ticket = await signDeliverTicket(signer, {
+        playerAddress: context.playerAddress,
+        epoch: BigInt(body.epoch),
+        ballIndex: BigInt(body.ballIndex),
+        assemblyId: context.assemblyId,
+        expiresAtMs: now + ttlMs,
+        nonce: randomNonce(),
+      });
+
+      json(response, 200, serializeDeliverTicket(ticket));
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unknown error";

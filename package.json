@@ -1,0 +1,11 @@
+{
+  "name": "singuhunt-app-root",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@mysten/bcs": "latest",
+    "@mysten/sui": "latest",
+    "dotenv": "^17.2.3",
+    "tsx": "^4.20.6"
+  }
+}

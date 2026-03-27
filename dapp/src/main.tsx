@@ -1,11 +1,9 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { QueryClient } from "@tanstack/react-query";
-import { EveFrontierProvider } from "@evefrontier/dapp-kit";
 import "./main.css";
-import App from "./App.tsx";
-
-const queryClient = new QueryClient();
+const RuntimeRoot = React.lazy(() =>
+  import("./runtime.tsx").then((module) => ({ default: module.RuntimeRoot })),
+);
 
 class RootErrorBoundary extends React.Component<
   React.PropsWithChildren,
@@ -43,11 +41,18 @@ class RootErrorBoundary extends React.Component<
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <RootErrorBoundary>
-      <EveFrontierProvider queryClient={queryClient}>
-        <App />
-      </EveFrontierProvider>
-    </RootErrorBoundary>
-  </React.StrictMode>,
+  <RootErrorBoundary>
+    <React.Suspense
+      fallback={
+        <div className="app">
+          <div className="bulletin-board">
+            <h3>INITIALIZING GATE LINK</h3>
+            <p className="hint">Loading the Singu Hunt runtime...</p>
+          </div>
+        </div>
+      }
+    >
+      <RuntimeRoot />
+    </React.Suspense>
+  </RootErrorBoundary>,
 );

@@ -1,11 +1,11 @@
 /// Auto Hunt Scheduler - Multi-Mode
 ///
 /// Daily schedule (UTC+8):
-///   Mode 1 Solo Race:     reg 08:50-08:59, play 09:00-09:30
-///   Mode 2 Team Race:     reg 09:50-09:59, play 10:00-10:30
-///   Mode 3 Deep Decrypt:  reg 10:50-10:59, play 11:00-12:00
-///   Mode 4 Large Arena:   reg 12:50-12:59, play 13:00-14:00
-///   Mode 5 Obstacle Run:  reg 14:20-14:29, play 14:30-15:00
+///   Mode 1 Solo Race:     reg 08:57-08:59, play 09:00-09:07
+///   Mode 2 Team Race:     reg 09:57-09:59, play 10:00-10:07
+///   Mode 3 Deep Decrypt:  reg 10:57-10:59, play 11:00-11:07
+///   Mode 4 Large Arena:   reg 12:57-12:59, play 13:00-13:12
+///   Mode 5 Obstacle Run:  reg 14:27-14:29, play 14:30-14:42
 ///
 /// Runs as a long-lived process. Deploy with pm2, systemd, or similar.
 /// Usage: pnpm auto-hunt
@@ -18,6 +18,7 @@ import {
   SINGUHUNT_PACKAGE_ID,
   GAME_STATE_ID,
   ADMIN_CAP_ID,
+  SINGU_SHARD_TREASURY_ID,
 } from "./utils/config.js";
 import { signAndExecute } from "./utils/transaction.js";
 
@@ -41,42 +42,42 @@ const SCHEDULE: ModeSchedule[] = [
   {
     mode: 1,
     label: "Solo Race",
-    regStartUTC8: { h: 8, m: 50 },
+    regStartUTC8: { h: 8, m: 57 },
     regEndUTC8: { h: 8, m: 59 },
     gameStartUTC8: { h: 9, m: 0 },
-    gameEndUTC8: { h: 9, m: 30 },
+    gameEndUTC8: { h: 9, m: 7 },
   },
   {
     mode: 2,
     label: "Team Race",
-    regStartUTC8: { h: 9, m: 50 },
+    regStartUTC8: { h: 9, m: 57 },
     regEndUTC8: { h: 9, m: 59 },
     gameStartUTC8: { h: 10, m: 0 },
-    gameEndUTC8: { h: 10, m: 30 },
+    gameEndUTC8: { h: 10, m: 7 },
   },
   {
     mode: 3,
     label: "Deep Decrypt",
-    regStartUTC8: { h: 10, m: 50 },
+    regStartUTC8: { h: 10, m: 57 },
     regEndUTC8: { h: 10, m: 59 },
     gameStartUTC8: { h: 11, m: 0 },
-    gameEndUTC8: { h: 12, m: 0 },
+    gameEndUTC8: { h: 11, m: 7 },
   },
   {
     mode: 4,
     label: "Large Arena",
-    regStartUTC8: { h: 12, m: 50 },
+    regStartUTC8: { h: 12, m: 57 },
     regEndUTC8: { h: 12, m: 59 },
     gameStartUTC8: { h: 13, m: 0 },
-    gameEndUTC8: { h: 14, m: 0 },
+    gameEndUTC8: { h: 13, m: 12 },
   },
   {
     mode: 5,
     label: "Obstacle Run",
-    regStartUTC8: { h: 14, m: 20 },
+    regStartUTC8: { h: 14, m: 27 },
     regEndUTC8: { h: 14, m: 29 },
     gameStartUTC8: { h: 14, m: 30 },
-    gameEndUTC8: { h: 15, m: 0 },
+    gameEndUTC8: { h: 14, m: 42 },
   },
 ];
 
@@ -236,6 +237,9 @@ async function burnAllExpiredBalls(): Promise<number> {
   const client = getSuiClient();
   const admin = getAdminKeypair();
   const adminAddress = admin.toSuiAddress();
+  if (!SINGU_SHARD_TREASURY_ID) {
+    throw new Error("Missing SINGU_SHARD_TREASURY_ID");
+  }
 
   let cursor: string | null | undefined = null;
   let allBalls: { objectId: string; expiresAt: number }[] = [];
@@ -243,7 +247,7 @@ async function burnAllExpiredBalls(): Promise<number> {
   do {
     const result = await client.getOwnedObjects({
       owner: adminAddress,
-      filter: { StructType: `${SINGUHUNT_PACKAGE_ID}::singuhunt::DragonBall` },
+      filter: { StructType: `${SINGUHUNT_PACKAGE_ID}::singuhunt::SinguShardRecord` },
       options: { showContent: true },
       cursor: cursor ?? undefined,
       limit: 50,
@@ -266,20 +270,38 @@ async function burnAllExpiredBalls(): Promise<number> {
   const expired = allBalls.filter((b) => b.expiresAt < now);
 
   if (expired.length === 0) {
-    log("No expired DragonBalls to burn.");
+    log("No expired SinguShards to burn.");
     return 0;
   }
 
-  log(`Found ${expired.length} expired DragonBall(s). Burning...`);
+  log(`Found ${expired.length} expired SinguShard(s). Burning...`);
 
   for (let i = 0; i < expired.length; i += BURN_BATCH_SIZE) {
     const batch = expired.slice(i, i + BURN_BATCH_SIZE);
     const tx = new Transaction();
+    const shardTokenObjects = await client.getOwnedObjects({
+      owner: adminAddress,
+      filter: {
+        StructType: `0x2::token::Token<${SINGUHUNT_PACKAGE_ID}::singu_shard_token::SINGU_SHARD_TOKEN>`,
+      },
+      options: { showType: true },
+      limit: batch.length,
+    });
 
-    for (const ball of batch) {
+    for (let batchIndex = 0; batchIndex < batch.length; batchIndex += 1) {
+      const ball = batch[batchIndex];
+      const shardTokenId = shardTokenObjects.data[batchIndex]?.data?.objectId;
+      if (!shardTokenId) {
+        throw new Error("Not enough SinguShard token objects to burn expired records");
+      }
       tx.moveCall({
-        target: `${SINGUHUNT_PACKAGE_ID}::singuhunt::burn_expired_ball`,
-        arguments: [tx.object(ball.objectId), tx.object("0x6")],
+        target: `${SINGUHUNT_PACKAGE_ID}::singuhunt::burn_expired_singu_shard`,
+        arguments: [
+          tx.object(SINGU_SHARD_TREASURY_ID),
+          tx.object(ball.objectId),
+          tx.object(shardTokenId),
+          tx.object("0x6"),
+        ],
       });
     }
 

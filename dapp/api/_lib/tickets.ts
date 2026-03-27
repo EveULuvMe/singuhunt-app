@@ -1,6 +1,25 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { decodeSuiPrivateKey } from "@mysten/sui/cryptography";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
+import { bcs } from "@mysten/sui/bcs";
+
+const claimTicketBcs = bcs.struct("ClaimTicketPayload", {
+  domain: bcs.vector(bcs.u8()),
+  player: bcs.Address,
+  epoch: bcs.u64(),
+  ball_index: bcs.u64(),
+  assembly_id: bcs.Address,
+  ticket_expires_at_ms: bcs.u64(),
+  ticket_nonce: bcs.u64(),
+});
+
+const decryptTicketBcs = bcs.struct("DecryptTicketPayload", {
+  domain: bcs.vector(bcs.u8()),
+  player: bcs.Address,
+  epoch: bcs.u64(),
+  ticket_expires_at_ms: bcs.u64(),
+  ticket_nonce: bcs.u64(),
+});
 
 type TicketPayload = {
   playerAddress: string;
@@ -18,45 +37,27 @@ type DecryptTicketPayload = {
   nonce: bigint;
 };
 
-function addressToBytes(value: string): Uint8Array {
-  return Uint8Array.from(Buffer.from(value.slice(2), "hex"));
+function normalizeAddress(value: string) {
+  const hex = value.startsWith("0x") ? value.slice(2) : value;
+  return `0x${hex.toLowerCase().padStart(64, "0")}`;
 }
 
-function u64ToLeBytes(value: bigint): Uint8Array {
-  if (value < 0n || value > 0xffff_ffff_ffff_ffffn) {
-    throw new Error(`u64 out of range: ${value}`);
-  }
-
-  const bytes = new Uint8Array(8);
-  let current = value;
-  for (let i = 0; i < 8; i += 1) {
-    bytes[i] = Number(current & 0xffn);
-    current >>= 8n;
-  }
-  return bytes;
-}
-
-function concatBytes(...chunks: Uint8Array[]) {
-  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-  const result = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    result.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return result;
+function sha3_256(bytes: Uint8Array) {
+  return new Uint8Array(createHash("sha3-256").update(bytes).digest());
 }
 
 function buildTicketMessage(domain: string, payload: TicketPayload) {
-  return concatBytes(
-    new TextEncoder().encode(domain),
-    addressToBytes(payload.playerAddress),
-    u64ToLeBytes(payload.epoch),
-    u64ToLeBytes(payload.ballIndex),
-    addressToBytes(payload.assemblyId),
-    u64ToLeBytes(payload.expiresAtMs),
-    u64ToLeBytes(payload.nonce),
-  );
+  return claimTicketBcs
+    .serialize({
+      domain: Array.from(new TextEncoder().encode(domain)),
+      player: normalizeAddress(payload.playerAddress),
+      epoch: payload.epoch,
+      ball_index: payload.ballIndex,
+      assembly_id: normalizeAddress(payload.assemblyId),
+      ticket_expires_at_ms: payload.expiresAtMs,
+      ticket_nonce: payload.nonce,
+    })
+    .toBytes();
 }
 
 function randomNonce(): bigint {
@@ -69,13 +70,15 @@ function randomNonce(): bigint {
 }
 
 function buildDecryptTicketMessage(payload: DecryptTicketPayload) {
-  return concatBytes(
-    new TextEncoder().encode("SINGUHUNT_DECRYPT_V1"),
-    addressToBytes(payload.playerAddress),
-    u64ToLeBytes(payload.epoch),
-    u64ToLeBytes(payload.expiresAtMs),
-    u64ToLeBytes(payload.nonce),
-  );
+  return decryptTicketBcs
+    .serialize({
+      domain: Array.from(new TextEncoder().encode("SINGUHUNT_DECRYPT_V2")),
+      player: normalizeAddress(payload.playerAddress),
+      epoch: payload.epoch,
+      ticket_expires_at_ms: payload.expiresAtMs,
+      ticket_nonce: payload.nonce,
+    })
+    .toBytes();
 }
 
 export function getTicketSigner() {
@@ -89,7 +92,7 @@ export function getTicketSigner() {
 }
 
 export async function signGateTicket(
-  domain: "SINGUHUNT_CLAIM_V1" | "SINGUHUNT_DELIVER_V1",
+  domain: "SINGUHUNT_CLAIM_V2" | "SINGUHUNT_DELIVER_V2",
   payload: Omit<TicketPayload, "expiresAtMs" | "nonce">,
 ) {
   const keypair = getTicketSigner();
@@ -103,7 +106,7 @@ export async function signGateTicket(
   };
 
   const message = buildTicketMessage(domain, fullPayload);
-  const signed = await keypair.signPersonalMessage(message);
+  const signed = await keypair.sign(sha3_256(message));
 
   return {
     ...fullPayload,
@@ -111,7 +114,7 @@ export async function signGateTicket(
     ballIndex: fullPayload.ballIndex.toString(),
     expiresAtMs: expiresAtMs.toString(),
     nonce: nonce.toString(),
-    signature: signed.signature,
+    signature: Buffer.from(signed).toString("base64"),
     signerAddress: keypair.toSuiAddress(),
   };
 }
@@ -128,14 +131,14 @@ export async function signDecryptTicket(payload: Omit<DecryptTicketPayload, "exp
   };
 
   const message = buildDecryptTicketMessage(fullPayload);
-  const signed = await keypair.signPersonalMessage(message);
+  const signed = await keypair.sign(sha3_256(message));
 
   return {
     playerAddress: fullPayload.playerAddress,
     epoch: fullPayload.epoch.toString(),
     expiresAtMs: expiresAtMs.toString(),
     nonce: nonce.toString(),
-    signature: signed.signature,
+    signature: Buffer.from(signed).toString("base64"),
     signerAddress: keypair.toSuiAddress(),
   };
 }

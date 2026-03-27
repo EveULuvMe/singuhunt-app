@@ -34,7 +34,7 @@ export default async function handler(req: any, res: any) {
       throw new Error("Missing epoch");
     }
 
-    const ticket = await signGateTicket("SINGUHUNT_DELIVER_V1", {
+    const ticket = await signGateTicket("SINGUHUNT_DELIVER_V2", {
       playerAddress: normalizePlayerAddress(body.playerAddress),
       epoch: BigInt(body.epoch),
       ballIndex: BigInt(body.ballIndex),

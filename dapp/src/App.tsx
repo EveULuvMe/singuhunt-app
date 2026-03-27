@@ -1,4 +1,8 @@
-import { HuntBoard } from "./HuntBoard.tsx";
+import { Suspense, lazy } from "react";
+
+const HuntBoard = lazy(() =>
+  import("./HuntBoard.tsx").then((m) => ({ default: m.HuntBoard }))
+);
 
 function App() {
   return (
@@ -10,7 +14,9 @@ function App() {
         </div>
       </div>
 
-      <HuntBoard />
+      <Suspense fallback={<div className="loading">INITIALIZING...</div>}>
+        <HuntBoard />
+      </Suspense>
 
       <div className="footer">
         SinguHunt on Sui Testnet

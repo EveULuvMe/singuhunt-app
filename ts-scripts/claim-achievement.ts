@@ -1,4 +1,4 @@
-/// Claim the permanent achievement NFT by burning the required number of DragonBall tokens.
+/// Claim the permanent achievement NFT by burning the required number of SinguShard tokens.
 /// Usage: pnpm claim-achievement [--player A|B]
 
 import { Transaction } from "@mysten/sui/transactions";
@@ -8,13 +8,15 @@ import {
   getPlayerKeypair,
   SINGUHUNT_PACKAGE_ID,
   GAME_STATE_ID,
+  SINGU_SHARD_TREASURY_ID,
+  ACHIEVEMENT_TREASURY_ID,
 } from "./utils/config.js";
 import { signAndExecute } from "./utils/transaction.js";
 
-type OwnedDragonBall = {
+type OwnedSinguShard = {
   objectId: string;
   epoch: number;
-  starIndex: number;
+  shardIndex: number;
   delivered: boolean;
 };
 
@@ -51,33 +53,45 @@ async function main() {
   const gameFields = (gameState.data.content as any).fields;
   const currentEpoch = Number(gameFields.current_epoch);
   const requiredSinguCount = Number(gameFields.required_singu_count);
+  if (!SINGU_SHARD_TREASURY_ID || !ACHIEVEMENT_TREASURY_ID) {
+    throw new Error("Missing SINGU_SHARD_TREASURY_ID or ACHIEVEMENT_TREASURY_ID");
+  }
 
-  const ownedObjects = await client.getOwnedObjects({
-    owner: playerAddress,
-    filter: {
-      StructType: `${SINGUHUNT_PACKAGE_ID}::singuhunt::DragonBall`,
-    },
-    options: { showContent: true },
-  });
+  const [ownedObjects, shardTokenObjects] = await Promise.all([
+    client.getOwnedObjects({
+      owner: playerAddress,
+      filter: {
+        StructType: `${SINGUHUNT_PACKAGE_ID}::singuhunt::SinguShardRecord`,
+      },
+      options: { showContent: true },
+    }),
+    client.getOwnedObjects({
+      owner: playerAddress,
+      filter: {
+        StructType: `0x2::token::Token<${SINGUHUNT_PACKAGE_ID}::singu_shard_token::SINGU_SHARD_TOKEN>`,
+      },
+      options: { showType: true },
+    }),
+  ]);
 
-  const tokens: OwnedDragonBall[] = ownedObjects.data
+  const tokens: OwnedSinguShard[] = ownedObjects.data
     .filter((obj) => obj.data?.content?.dataType === "moveObject")
     .map((obj) => {
       const fields = (obj.data!.content as any).fields;
       return {
         objectId: obj.data!.objectId,
         epoch: Number(fields.epoch),
-        starIndex: Number(fields.star_index),
+        shardIndex: Number(fields.shard_index),
         delivered: Boolean(fields.delivered),
       };
     });
 
-  console.log(`Found ${tokens.length} DragonBall tokens`);
+  console.log(`Found ${tokens.length} SinguShard tokens`);
 
   const epochTokens = tokens
     .filter((token) => token.epoch === currentEpoch && token.delivered)
-    .sort((a, b) => a.starIndex - b.starIndex);
-  const uniqueIndices = new Set(epochTokens.map((token) => token.starIndex));
+    .sort((a, b) => a.shardIndex - b.shardIndex);
+  const uniqueIndices = new Set(epochTokens.map((token) => token.shardIndex));
 
   if (uniqueIndices.size < requiredSinguCount) {
     console.error(
@@ -87,9 +101,9 @@ async function main() {
     process.exit(1);
   }
 
-  const selectedTokens: OwnedDragonBall[] = [];
+  const selectedTokens: OwnedSinguShard[] = [];
   for (const token of epochTokens) {
-    if (selectedTokens.some((selected) => selected.starIndex === token.starIndex)) {
+    if (selectedTokens.some((selected) => selected.shardIndex === token.shardIndex)) {
       continue;
     }
     selectedTokens.push(token);
@@ -103,16 +117,21 @@ async function main() {
   );
 
   const tx = new Transaction();
-  const tokenVec = tx.makeMoveVec({
-    type: `${SINGUHUNT_PACKAGE_ID}::singuhunt::DragonBall`,
+  const shardRecordVec = tx.makeMoveVec({
     elements: selectedTokens.map((token) => tx.object(token.objectId)),
+  });
+  const shardTokenVec = tx.makeMoveVec({
+    elements: shardTokenObjects.data.slice(0, requiredSinguCount).map((token) => tx.object(token.data!.objectId)),
   });
 
   tx.moveCall({
     target: `${SINGUHUNT_PACKAGE_ID}::singuhunt::claim_achievement`,
     arguments: [
       tx.object(GAME_STATE_ID),
-      tokenVec,
+      tx.object(SINGU_SHARD_TREASURY_ID),
+      tx.object(ACHIEVEMENT_TREASURY_ID),
+      shardRecordVec,
+      shardTokenVec,
       tx.object("0x6"),
     ],
   });

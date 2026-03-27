@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import { config } from "dotenv";
 import { decodeSuiPrivateKey } from "@mysten/sui/cryptography";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
-import { verifyPersonalMessageSignature } from "@mysten/sui/verify";
 import {
   buildClaimTicketMessage,
   createDevContextSignature,
@@ -45,29 +44,28 @@ async function main() {
 
   const signed = await signClaimTicket(keypair, payload);
   const message = buildClaimTicketMessage(payload);
-  const verified = await verifyPersonalMessageSignature(message, signed.signature);
-  assert.equal(
-    normalizeAddress(verified.toSuiAddress()),
-    normalizeAddress(keypair.toSuiAddress()),
-    "signed ticket must verify against signer address",
-  );
+  const digest = createHash("sha3-256").update(message).digest();
+  const verified = await keypair
+    .getPublicKey()
+    .verify(digest, Buffer.from(signed.signature, "base64"));
+  assert.equal(verified, true, "signed ticket must verify against signer public key");
 
   const tamperedPayload = { ...payload, ballIndex: payload.ballIndex + 1n };
   const tamperedMessage = buildClaimTicketMessage(tamperedPayload);
+  const tamperedDigest = createHash("sha3-256").update(tamperedMessage).digest();
   const tamperedVerified = await keypair
     .getPublicKey()
-    .verifyPersonalMessage(tamperedMessage, signed.signature);
+    .verify(tamperedDigest, Buffer.from(signed.signature, "base64"));
   assert.equal(
     tamperedVerified,
     false,
     "signature must fail after tampering with the claim payload",
   );
 
-  const digest = createHash("blake2b512")
+  const ticketDigest = createHash("sha3-256")
     .update(message)
-    .digest("hex")
-    .slice(0, 64);
-  assert.equal(digest.length, 64, "ticket digest must be 32 bytes");
+    .digest("hex");
+  assert.equal(ticketDigest.length, 64, "ticket digest must be 32 bytes");
 
   const context = {
     tenant: "your-tenant",
@@ -92,7 +90,7 @@ async function main() {
 
   console.log("Claim ticket verification passed.");
   console.log(`Signer: ${keypair.toSuiAddress()}`);
-  console.log(`Ticket digest: 0x${digest}`);
+  console.log(`Ticket digest: 0x${ticketDigest}`);
 }
 
 main().catch((error) => {

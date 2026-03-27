@@ -9,6 +9,7 @@ import {
   getPlayerKeypair,
   SINGUHUNT_PACKAGE_ID,
   GAME_STATE_ID,
+  SINGU_SHARD_TREASURY_ID,
 } from "./utils/config.js";
 import { signAndExecute } from "./utils/transaction.js";
 import {
@@ -29,14 +30,14 @@ type TicketResponse = {
 
 async function main() {
   const args = process.argv.slice(2);
-  let ballIndex = 0;
+  let shardIndex = 0;
   let playerKey: "A" | "B" = "A";
   let assemblyId = process.env.TRUSTED_ASSEMBLY_ID || "";
   let ticketApi = process.env.CLAIM_TICKET_API_URL || "http://localhost:8787";
 
   for (let i = 0; i < args.length; i += 1) {
     if (args[i] === "--index" && args[i + 1]) {
-      ballIndex = Number.parseInt(args[i + 1], 10);
+      shardIndex = Number.parseInt(args[i + 1], 10);
     }
     if (args[i] === "--player" && args[i + 1]) {
       playerKey = args[i + 1] as "A" | "B";
@@ -76,17 +77,21 @@ async function main() {
 
   const fields = (gameState.data.content as any).fields;
   const epoch = BigInt(fields.current_epoch);
-  const requiredSinguCount = Number(fields.required_singu_count || fields.ball_gates?.length || 0);
+  const requiredSinguCount = Number(fields.required_singu_count || fields.shard_gates?.length || 0);
   const tenant = process.env.TRUSTED_TENANT || "your-tenant";
   const devSecret = process.env.DEV_CONTEXT_SECRET;
 
-  if (ballIndex < 0 || ballIndex >= requiredSinguCount) {
-    throw new Error(`Ball index must be between 0 and ${requiredSinguCount - 1}`);
+  if (!SINGU_SHARD_TREASURY_ID) {
+    throw new Error("Missing SINGU_SHARD_TREASURY_ID");
+  }
+
+  if (shardIndex < 0 || shardIndex >= requiredSinguCount) {
+    throw new Error(`Shard index must be between 0 and ${requiredSinguCount - 1}`);
   }
 
   const ticketRequestBody: Record<string, string | number> = {
     playerAddress,
-    ballIndex,
+    ballIndex: shardIndex,
     epoch: epoch.toString(),
     assemblyId: normalizeAddress(assemblyId),
     tenant,
@@ -115,17 +120,18 @@ async function main() {
 
   const ticket = (await ticketResponse.json()) as TicketResponse;
 
-  console.log(`Collecting Singu #${ballIndex} from ${ticket.assemblyId}`);
+  console.log(`Collecting Singu #${shardIndex} from ${ticket.assemblyId}`);
   console.log(`Player: ${playerAddress}`);
   console.log(`Ticket signer: ${ticket.signerAddress}`);
 
   const tx = new Transaction();
   tx.moveCall({
-    target: `${SINGUHUNT_PACKAGE_ID}::singuhunt::collect_ball`,
-    arguments: [
-      tx.object(GAME_STATE_ID),
-      tx.pure.u64(ballIndex),
-      tx.pure.address(ticket.assemblyId),
+      target: `${SINGUHUNT_PACKAGE_ID}::singuhunt::collect_singu_shard`,
+      arguments: [
+        tx.object(GAME_STATE_ID),
+        tx.object(SINGU_SHARD_TREASURY_ID),
+        tx.pure.u64(shardIndex),
+        tx.pure.address(ticket.assemblyId),
       tx.pure.u64(BigInt(ticket.expiresAtMs)),
       tx.pure.u64(BigInt(ticket.nonce)),
       tx.pure.vector("u8", Array.from(Buffer.from(ticket.signature, "base64"))),
@@ -144,11 +150,11 @@ async function main() {
     });
 
     for (const event of events.data) {
-      if (event.type.includes("DragonBallCollected")) {
+      if (event.type.includes("SinguShardCollected")) {
         const data = event.parsedJson as Record<string, string>;
         console.log("\n=== Singu Collected ===");
         console.log(`Epoch: ${data.epoch}`);
-        console.log(`Index: ${data.star_index}`);
+        console.log(`Index: ${data.shard_index}`);
         console.log(`Collector: ${data.collector}`);
         console.log(`Gate: ${data.gate_id}`);
       }

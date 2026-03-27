@@ -16,4 +16,5 @@ if (!privateKey) {
 const { secretKey } = decodeSuiPrivateKey(privateKey);
 const keypair = Ed25519Keypair.fromSecretKey(secretKey);
 
-console.log(keypair.toSuiAddress());
+console.log("address:", keypair.toSuiAddress());
+console.log("publicKeyBase64:", Buffer.from(keypair.getPublicKey().toRawBytes()).toString("base64"));

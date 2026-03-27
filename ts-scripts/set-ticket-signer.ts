@@ -1,8 +1,11 @@
-/// Configure the trusted claim ticket signer on-chain.
+/// Configure the trusted claim ticket signer public key on-chain.
 /// Usage:
-///   pnpm set-ticket-signer -- --address <SUI_ADDRESS>
+///   pnpm set-ticket-signer -- --public-key <BASE64_PUBLIC_KEY>
 
 import { Transaction } from "@mysten/sui/transactions";
+import { decodeSuiPrivateKey } from "@mysten/sui/cryptography";
+import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
+import { fromBase64 } from "@mysten/bcs";
 import {
   getAdminKeypair,
   getSuiClient,
@@ -14,18 +17,24 @@ import { signAndExecute } from "./utils/transaction.js";
 
 async function main() {
   const args = process.argv.slice(2);
-  let signerAddress = process.env.CLAIM_TICKET_SIGNER_ADDRESS || "";
+  let signerPublicKey = process.env.CLAIM_TICKET_SIGNER_PUBLIC_KEY || "";
+  const signerPrivateKey = process.env.CLAIM_TICKET_PRIVATE_KEY || "";
 
   for (let i = 0; i < args.length; i += 1) {
-    if (args[i] === "--address" && args[i + 1]) {
-      signerAddress = args[i + 1];
+    if (args[i] === "--public-key" && args[i + 1]) {
+      signerPublicKey = args[i + 1];
     }
   }
 
-  if (!signerAddress) {
-    throw new Error(
-      "Missing --address <SUI_ADDRESS> or CLAIM_TICKET_SIGNER_ADDRESS",
-    );
+  if (!signerPublicKey && signerPrivateKey) {
+    const { secretKey } = decodeSuiPrivateKey(signerPrivateKey);
+    signerPublicKey = Buffer.from(
+      Ed25519Keypair.fromSecretKey(secretKey).getPublicKey().toRawBytes(),
+    ).toString("base64");
+  }
+
+  if (!signerPublicKey) {
+    throw new Error("Missing --public-key <BASE64_PUBLIC_KEY> or CLAIM_TICKET_SIGNER_PUBLIC_KEY");
   }
 
   const client = getSuiClient();
@@ -37,12 +46,12 @@ async function main() {
     arguments: [
       tx.object(ADMIN_CAP_ID),
       tx.object(GAME_STATE_ID),
-      tx.pure.address(signerAddress),
+      tx.pure.vector("u8", Array.from(fromBase64(signerPublicKey))),
     ],
   });
 
   await signAndExecute(client, admin, tx);
-  console.log(`Configured trusted claim ticket signer: ${signerAddress}`);
+  console.log("Configured trusted claim ticket signer public key");
 }
 
 main().catch((error) => {

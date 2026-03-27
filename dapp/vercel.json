@@ -13,6 +13,10 @@
       "destination": "/api/health?gate=:gate"
     },
     {
+      "source": "/singu-:path*",
+      "destination": "/index.html"
+    },
+    {
       "source": "/gates/(.*)",
       "destination": "/index.html"
     }
@@ -38,6 +42,15 @@
     },
     {
       "source": "/index.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/singu-:path*",
       "headers": [
         {
           "key": "Cache-Control",

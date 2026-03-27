@@ -1,4 +1,4 @@
-/// Burn expired DragonBall tokens (cleanup)
+/// Burn expired SinguShard tokens (cleanup)
 /// Usage: pnpm burn-expired
 ///        pnpm burn-expired -- --owner <ADDRESS>
 
@@ -7,6 +7,7 @@ import {
   getSuiClient,
   getAdminKeypair,
   SINGUHUNT_PACKAGE_ID,
+  SINGU_SHARD_TREASURY_ID,
 } from "./utils/config.js";
 import { signAndExecute } from "./utils/transaction.js";
 
@@ -22,15 +23,19 @@ async function main() {
     }
   }
 
-  console.log(`Scanning expired DragonBalls for: ${ownerAddress}`);
+  console.log(`Scanning expired SinguShards for: ${ownerAddress}`);
 
   let cursor: string | null | undefined = null;
-  let allBalls: { objectId: string; expiresAt: number; epoch: number; starIndex: number }[] = [];
+  if (!SINGU_SHARD_TREASURY_ID) {
+    throw new Error("Missing SINGU_SHARD_TREASURY_ID");
+  }
+
+  let allBalls: { objectId: string; expiresAt: number; epoch: number; shardIndex: number }[] = [];
 
   do {
     const result = await client.getOwnedObjects({
       owner: ownerAddress,
-      filter: { StructType: `${SINGUHUNT_PACKAGE_ID}::singuhunt::DragonBall` },
+      filter: { StructType: `${SINGUHUNT_PACKAGE_ID}::singuhunt::SinguShardRecord` },
       options: { showContent: true },
       cursor: cursor ?? undefined,
       limit: 50,
@@ -43,7 +48,7 @@ async function main() {
           objectId: record.data!.objectId,
           expiresAt: Number(fields.expires_at),
           epoch: Number(fields.epoch),
-          starIndex: Number(fields.star_index),
+          shardIndex: Number(fields.shard_index),
         });
       }
     }
@@ -55,21 +60,39 @@ async function main() {
   const expired = allBalls.filter((b) => b.expiresAt < now);
 
   if (expired.length === 0) {
-    console.log("No expired DragonBalls found.");
+    console.log("No expired SinguShards found.");
     return;
   }
 
-  console.log(`Found ${expired.length} expired DragonBall(s). Burning...`);
+  console.log(`Found ${expired.length} expired SinguShard(s). Burning...`);
 
   const batchSize = 10;
   for (let i = 0; i < expired.length; i += batchSize) {
     const batch = expired.slice(i, i + batchSize);
     const tx = new Transaction();
+    const shardTokenObjects = await client.getOwnedObjects({
+      owner: ownerAddress,
+      filter: {
+        StructType: `0x2::token::Token<${SINGUHUNT_PACKAGE_ID}::singu_shard_token::SINGU_SHARD_TOKEN>`,
+      },
+      options: { showType: true },
+      limit: batch.length,
+    });
 
-    for (const ball of batch) {
+    for (let batchIndex = 0; batchIndex < batch.length; batchIndex += 1) {
+      const ball = batch[batchIndex];
+      const shardTokenId = shardTokenObjects.data[batchIndex]?.data?.objectId;
+      if (!shardTokenId) {
+        throw new Error("Not enough SinguShard token objects to burn expired records");
+      }
       tx.moveCall({
-        target: `${SINGUHUNT_PACKAGE_ID}::singuhunt::burn_expired_ball`,
-        arguments: [tx.object(ball.objectId), tx.object("0x6")],
+        target: `${SINGUHUNT_PACKAGE_ID}::singuhunt::burn_expired_singu_shard`,
+        arguments: [
+          tx.object(SINGU_SHARD_TREASURY_ID),
+          tx.object(ball.objectId),
+          tx.object(shardTokenId),
+          tx.object("0x6"),
+        ],
       });
     }
 
@@ -79,7 +102,7 @@ async function main() {
     );
   }
 
-  console.log("Done! All expired DragonBalls burned.");
+  console.log("Done! All expired SinguShards burned.");
 }
 
 main().catch((err) => {

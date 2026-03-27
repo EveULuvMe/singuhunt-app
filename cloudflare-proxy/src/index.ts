@@ -113,11 +113,24 @@ function stripUntrustedHeaders(request: Request) {
 }
 
 function getGateSlugFromPath(pathname: string) {
-  const pageMatch = pathname.match(/^\/gates\/([^/]+)$/);
+  const legacyHomeMatch = pathname.match(/^\/(home|bulletin)$/);
+  if (legacyHomeMatch) {
+    return legacyHomeMatch[1];
+  }
+
+  // Page route: /singu-xxx-NNN (root-level slug)
+  const pageMatch = pathname.match(/^\/(singu-[^/]+)$/);
   if (pageMatch) {
     return pageMatch[1];
   }
 
+  // Legacy page route: /gates/slug
+  const legacyPageMatch = pathname.match(/^\/gates\/([^/]+)$/);
+  if (legacyPageMatch) {
+    return legacyPageMatch[1];
+  }
+
+  // API route: /api/gates/slug/(claim-ticket|deliver-ticket)
   const apiMatch = pathname.match(/^\/api\/gates\/([^/]+)\/(claim-ticket|deliver-ticket)$/);
   if (apiMatch) {
     return apiMatch[1];
@@ -130,6 +143,12 @@ async function proxyRequest(request: Request, env: Env) {
   const upstream = new URL(request.url);
   upstream.protocol = "https:";
   upstream.host = new URL(env.UPSTREAM_ORIGIN).host;
+
+  if (upstream.pathname === "/home" || upstream.pathname === "/bulletin") {
+    upstream.pathname = "/singu-home";
+  } else if (upstream.pathname === "/gates/home" || upstream.pathname === "/gates/bulletin") {
+    upstream.pathname = "/gates/singu-home";
+  }
 
   const headers = stripUntrustedHeaders(request);
   const gateSlug = getGateSlugFromPath(upstream.pathname);
