@@ -129,7 +129,7 @@ export const QUESTION_BANK: DeepDecryptQuestion[] = [
   { id: 94, prompt: "Star Map 指南說，地圖上星系通常顯示成什麼形狀？", answer: "small dots", aliases: ["dots"], sourceUrl: STARMAP },
   { id: 95, prompt: "Star Map 可以顯示你或你所在 Tribe 的哪種 network？", answer: "smart gate network", aliases: ["smart gate"], sourceUrl: STARMAP },
   { id: 96, prompt: "The Terminal 裡，哪個分頁可查看角色曾加入過的 Tribes 歷史？", answer: "History", aliases: ["history tab"], sourceUrl: TERMINAL },
-  { id: 97, prompt: "The Terminal 中顯示 LUX 交易紀錄的是哪個分頁？", answer: "Wallet", sourceUrl: TERMINAL },
+  { id: 97, prompt: "The Terminal 中顯示 EVE 交易紀錄的是哪個分頁？", answer: "Wallet", sourceUrl: TERMINAL },
   { id: 98, prompt: "UI Breakdown 說畫面右上角顯示已鎖定目標的是哪個區塊？", answer: "Locked Targets", sourceUrl: UI },
   { id: 99, prompt: "How do I play EVE Frontier? 一文指出 closed alpha 伺服器自哪一天起 24/7 開放？", answer: "December 10 2024", aliases: ["2024-12-10", "december 10th 2024"], sourceUrl: HOW_TO_PLAY },
   { id: 100, prompt: "Wallet recovery 文章中，EVE Frontier 使用的錢包名稱是什麼？", answer: "EVE Vault", aliases: ["vault"], sourceUrl: WALLET },

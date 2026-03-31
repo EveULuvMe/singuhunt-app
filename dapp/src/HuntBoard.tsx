@@ -168,7 +168,7 @@ type OwnedRegistrationPass = {
   objectId: string;
   epoch: number;
   mode: number;
-  feePaidLux: number;
+  feePaidEve: number;
   issuedAt: number;
 };
 
@@ -887,7 +887,7 @@ async function fetchOwnedRegistrationPasses(owner: string): Promise<OwnedRegistr
         objectId: data.objectId,
         epoch: Number(fields.epoch),
         mode: Number(fields.mode),
-        feePaidLux: Number(fields.fee_paid_lux),
+        feePaidEve: Number(fields.fee_paid_eve),
         issuedAt: Number(fields.issued_at),
       } satisfies OwnedRegistrationPass;
     })
@@ -1918,7 +1918,7 @@ export function HuntBoard() {
                   <div className="context-row">Pass object: {playerRegistrationPass.objectId}</div>
                   <div className="context-row">Epoch: {playerRegistrationPass.epoch}</div>
                   <div className="context-row">
-                    Fee paid: {formatBalance(playerRegistrationPass.feePaidLux)} EVE
+                    Fee paid: {formatBalance(playerRegistrationPass.feePaidEve)} EVE
                   </div>
                 </div>
               )}
