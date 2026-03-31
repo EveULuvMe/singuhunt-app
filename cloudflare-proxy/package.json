@@ -1,6 +1,7 @@
 {
   "name": "singuhunt-cloudflare-proxy",
   "private": true,
+  "license": "UNLICENSED",
   "type": "module",
   "scripts": {
     "deploy": "wrangler deploy",

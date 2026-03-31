@@ -1,6 +1,7 @@
 {
   "name": "singuhunt-app-root",
   "private": true,
+  "license": "UNLICENSED",
   "type": "module",
   "dependencies": {
     "@mysten/bcs": "latest",
