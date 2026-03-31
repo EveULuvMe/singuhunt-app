@@ -7,7 +7,7 @@ import { Transaction } from "@mysten/sui/transactions";
 import { getSuiClient, getAdminKeypair } from "./utils/config.js";
 import { signAndExecute } from "./utils/transaction.js";
 
-// Configured Tenant world package: use published-at for function calls, original-id for struct types
+// World package: use published-at for function calls, original-id for struct types
 const WORLD_PACKAGE_ID =
   "0x07e6b810c2dff6df56ea7fbad9ff32f4d84cbee53e496267515887b712924bd1";
 const WORLD_ORIGINAL_ID =

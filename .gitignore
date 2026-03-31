@@ -5,3 +5,4 @@ node_modules/
 dist/
 cloudflare-proxy/wrangler.toml
 cloudflare-proxy/.dev.vars
+move-contracts/**/build/

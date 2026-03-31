@@ -1,9 +1,9 @@
-/// Find all your Smart Assemblies and Character on Configured Tenant
+/// Find all your Smart Assemblies and Character on a configured tenant
 /// Usage: pnpm find-assemblies
 
 import { getSuiClient } from "./utils/config.js";
 
-// Configured Tenant world package: use published-at for function calls, original-id for struct types
+// World package: use published-at for function calls, original-id for struct types
 const WORLD_PACKAGE_ID =
   "0x07e6b810c2dff6df56ea7fbad9ff32f4d84cbee53e496267515887b712924bd1";
 const WORLD_ORIGINAL_ID =
@@ -70,10 +70,10 @@ async function main() {
   }
 
   // Try World API for assemblies
-  console.log("=== Querying Configured Tenant World API ===");
+  console.log("=== Querying configured World API ===");
   try {
     const res = await fetch(
-      `https://world-api.example.com/v2/smart-assemblies?limit=50`,
+      process.env.WORLD_API_URL || "https://world-api.example.com/v2/smart-assemblies?limit=50",
     );
     const data = await res.json();
     if (data && Array.isArray(data)) {

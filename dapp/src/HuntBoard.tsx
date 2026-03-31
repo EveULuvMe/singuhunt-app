@@ -315,15 +315,15 @@ type GateMetadata = {
 
 const GATE_METADATA: Record<string, GateMetadata> = {
   "0x1111111111111111111111111111111111111111111111111111111111111111": {
-    solarSystem: "Configured System A",
+    solarSystem: "Configured Configured System A",
     coordinates: { x: 0, y: 0, z: 0 },
   },
   "0x2222222222222222222222222222222222222222222222222222222222222222": {
-    solarSystem: "Configured System B",
+    solarSystem: "Configured System Alpha",
     coordinates: { x: 0, y: 0, z: 0 },
   },
   "0x3333333333333333333333333333333333333333333333333333333333333333": {
-    solarSystem: "Configured System C",
+    solarSystem: "Configured System Beta",
     coordinates: { x: 0, y: 0, z: 0 },
   },
   // Add more gates here as you deploy them:
