@@ -5,7 +5,7 @@ compatibility_date = "2026-03-21"
 [vars]
 UPSTREAM_ORIGIN = "https://your-upstream.example.com"
 TRUSTED_TENANT = "your-tenant"
-TRUSTED_GATE_MAP = "{\"singu-01\":{\"assemblyId\":\"0xYOUR_ASSEMBLY_ID\",\"tenant\":\"your-tenant\"},\"singu-02\":{\"assemblyId\":\"0xYOUR_ASSEMBLY_ID\",\"tenant\":\"your-tenant\"}}"
+TRUSTED_GATE_MAP = "{\"gate-slug\":{\"assemblyId\":\"0xYOUR_ASSEMBLY_ID\",\"tenant\":\"your-tenant\"}}"
 
 # Set this with `wrangler secret put EF_CONTEXT_SHARED_SECRET`
 # EF_CONTEXT_SHARED_SECRET = "..."
