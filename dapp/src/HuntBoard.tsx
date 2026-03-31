@@ -9,6 +9,8 @@ const GAME_STATE_ID =
 const PACKAGE_ID =
   import.meta.env.VITE_SINGUHUNT_PACKAGE_ID ||
   "0xbce47d3e624f2478bdd77a114931b1af541929032da3db01cb6b6d4378aba1ab";
+const CALL_PACKAGE_ID =
+  import.meta.env.VITE_SINGUHUNT_CALL_PACKAGE_ID || PACKAGE_ID;
 const EVE_COIN_TYPE =
   import.meta.env.VITE_EVE_COIN_TYPE ||
   "0xf0446b93345c1118f21239d7ac58fb82d005219b2016e100f074e4d17162a465::EVE::EVE";
@@ -1273,7 +1275,7 @@ export function HuntBoard() {
 
       if (playerRegistrationPass) {
         tx.moveCall({
-          target: `${PACKAGE_ID}::singuhunt::activate_registration`,
+          target: `${CALL_PACKAGE_ID}::singuhunt::activate_registration`,
           arguments: [
             tx.object(GAME_STATE_ID),
             tx.object(playerRegistrationPass.objectId),
@@ -1308,7 +1310,7 @@ export function HuntBoard() {
 
         const [feeCoin] = tx.splitCoins(primaryCoin, [requiredFee]);
         tx.moveCall({
-          target: `${PACKAGE_ID}::singuhunt::buy_registration_pass_eve`,
+          target: `${CALL_PACKAGE_ID}::singuhunt::buy_registration_pass_eve`,
           typeArguments: [EVE_COIN_TYPE],
           arguments: [
             tx.object(GAME_STATE_ID),
@@ -1354,7 +1356,7 @@ export function HuntBoard() {
 
       const tx = new Transaction();
       tx.moveCall({
-        target: `${PACKAGE_ID}::singuhunt::collect_singu_shard`,
+        target: `${CALL_PACKAGE_ID}::singuhunt::collect_singu_shard`,
         arguments: [
           tx.object(GAME_STATE_ID),
           tx.object(SINGU_SHARD_TREASURY_ID),
@@ -1410,7 +1412,7 @@ export function HuntBoard() {
 
       const tx = new Transaction();
       tx.moveCall({
-        target: `${PACKAGE_ID}::singuhunt::deliver_singu_shard`,
+        target: `${CALL_PACKAGE_ID}::singuhunt::deliver_singu_shard`,
         arguments: [
           tx.object(GAME_STATE_ID),
           tx.object(ball.objectId),
@@ -1467,7 +1469,7 @@ export function HuntBoard() {
         .slice(0, requiredSinguCount)
         .map((token) => tx.object(token.objectId));
       tx.moveCall({
-        target: `${PACKAGE_ID}::singuhunt::claim_achievement`,
+        target: `${CALL_PACKAGE_ID}::singuhunt::claim_achievement`,
         arguments: [
           tx.object(GAME_STATE_ID),
           tx.object(SINGU_SHARD_TREASURY_ID),
@@ -1520,7 +1522,7 @@ export function HuntBoard() {
 
       const tx = new Transaction();
       tx.moveCall({
-        target: `${PACKAGE_ID}::singuhunt::claim_team_achievement`,
+        target: `${CALL_PACKAGE_ID}::singuhunt::claim_team_achievement`,
         arguments: [
           tx.object(GAME_STATE_ID),
           tx.object(ACHIEVEMENT_TREASURY_ID),
@@ -1622,7 +1624,7 @@ export function HuntBoard() {
     try {
       const tx = new Transaction();
       tx.moveCall({
-        target: `${PACKAGE_ID}::singuhunt::claim_decrypt_achievement`,
+        target: `${CALL_PACKAGE_ID}::singuhunt::claim_decrypt_achievement`,
         arguments: [
           tx.object(GAME_STATE_ID),
           tx.object(ACHIEVEMENT_TREASURY_ID),
