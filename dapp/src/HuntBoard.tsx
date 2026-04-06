@@ -458,6 +458,10 @@ function GameGuideModal({
 
 function getGateSlugFromPath(): string | null {
   const parts = window.location.pathname.split("/").filter(Boolean);
+  // Legacy home routes: /home, /bulletin → treat as singu-home
+  if (parts.length === 1 && (parts[0] === "home" || parts[0] === "bulletin")) {
+    return "singu-home";
+  }
   // New root-level route: /singu-xxx-NNN
   if (parts.length === 1 && parts[0].startsWith("singu-")) {
     return parts[0];
