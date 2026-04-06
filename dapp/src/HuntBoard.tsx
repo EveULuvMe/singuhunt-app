@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useConnection, useSmartObject } from "@evefrontier/dapp-kit";
 import { useDAppKit } from "@mysten/dapp-kit-react";
 import { Transaction } from "@mysten/sui/transactions";
@@ -698,6 +698,48 @@ async function fetchActiveTeamRaceState(
   };
 }
 
+type TeamLeaderboardEntry = {
+  team_id: number;
+  completed_count: number;
+  finished: boolean;
+  winner_rank: number;
+  finished_at: number;
+};
+
+async function fetchTeamLeaderboard(
+  epoch: number,
+  teamCount: number,
+): Promise<TeamLeaderboardEntry[]> {
+  const cap = Math.min(teamCount, 10);
+  const rosters = await Promise.all(
+    Array.from({ length: cap }, (_, i) =>
+      fetchDynamicFieldValue<TeamRosterState>(
+        `${PACKAGE_ID}::singuhunt::TeamRosterKey`,
+        { epoch: String(epoch), team_id: String(i + 1) },
+      ),
+    ),
+  );
+  return rosters
+    .map((r, i) =>
+      r
+        ? {
+            team_id: i + 1,
+            completed_count: Number(r.completed_count),
+            finished: Boolean(r.finished),
+            winner_rank: Number(r.winner_rank),
+            finished_at: Number(r.finished_at),
+          }
+        : null,
+    )
+    .filter((e): e is TeamLeaderboardEntry => e !== null)
+    .sort((a, b) => {
+      if (a.finished && !b.finished) return -1;
+      if (!a.finished && b.finished) return 1;
+      if (a.finished && b.finished) return a.finished_at - b.finished_at;
+      return b.completed_count - a.completed_count;
+    });
+}
+
 async function fetchEpochWinner(epoch: number): Promise<string | null> {
   try {
     const response = await fetch(RPC_URL, {
@@ -921,6 +963,10 @@ function useCountdown(endTime?: string) {
   return remaining;
 }
 
+function Spinner({ text }: { text: string }) {
+  return <><span className="btn-spinner" />{text}</>;
+}
+
 export function HuntBoard() {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -959,7 +1005,19 @@ export function HuntBoard() {
   } | null>(null);
   const [decryptClaimLoading, setDecryptClaimLoading] = useState(false);
   const [decryptClaimError, setDecryptClaimError] = useState<string | null>(null);
-  const [decryptClaimDigest, setDecryptClaimDigest] = useState<string | null>(null);
+  const [decryptClaimDigest, setDecryptClaimDigestRaw] = useState<string | null>(null);
+  const [decryptClaimedFromStorage, setDecryptClaimedFromStorage] = useState(false);
+  const setDecryptClaimDigest = (digest: string | null) => {
+    setDecryptClaimDigestRaw(digest);
+    if (digest && gameState) {
+      try {
+        localStorage.setItem(
+          `decrypt_claimed_${gameState.current_epoch}_${walletAddress ?? ""}`,
+          digest,
+        );
+      } catch {}
+    }
+  };
   const [decryptWinnerInfo, setDecryptWinnerInfo] = useState<{
     slots: number;
     count: number;
@@ -974,6 +1032,9 @@ export function HuntBoard() {
   const [registerError, setRegisterError] = useState<string | null>(null);
   const [registerDigest, setRegisterDigest] = useState<string | null>(null);
   const [registerSuccessLabel, setRegisterSuccessLabel] = useState<string | null>(null);
+  const [teamLeaderboard, setTeamLeaderboard] = useState<TeamLeaderboardEntry[]>([]);
+  const prevTeamProgress = useRef<number>(0);
+  const [teamProgressPulse, setTeamProgressPulse] = useState(false);
 
   const { isConnected, walletAddress, handleConnect } = useConnection();
   const { assembly, loading: assemblyLoading } = useSmartObject();
@@ -1010,6 +1071,29 @@ export function HuntBoard() {
         ]);
         setRegistrationState(registration);
         setActiveTeamState(teamState);
+
+        // Fetch team leaderboard when mode 2 and on home route
+        if (state.hunt_mode === 2 && homeRoute) {
+          const teamCount = registration?.teamCount ?? 0;
+          if (teamCount > 0) {
+            fetchTeamLeaderboard(Number(state.current_epoch), teamCount).then(
+              setTeamLeaderboard,
+            );
+          }
+        } else {
+          setTeamLeaderboard([]);
+        }
+
+        // Detect team progress change for pulse animation
+        const newProgress = teamState.roster?.completed_count ?? 0;
+        if (
+          prevTeamProgress.current > 0 &&
+          newProgress > prevTeamProgress.current
+        ) {
+          setTeamProgressPulse(true);
+          setTimeout(() => setTeamProgressPulse(false), 1200);
+        }
+        prevTeamProgress.current = newProgress;
       } else {
         setRegistrationState(null);
         setActiveTeamState({
@@ -1017,6 +1101,7 @@ export function HuntBoard() {
           roster: null,
           claimedIndices: [],
         });
+        setTeamLeaderboard([]);
       }
     } catch (err: any) {
       setError(err.message || String(err));
@@ -1116,6 +1201,13 @@ export function HuntBoard() {
     (!!gameState &&
       (assemblyId === gameState.start_gate || assemblyId === gameState.end_gate));
   const normalizedWallet = walletAddress ? normalizeAddress(walletAddress) : "";
+  // Obstacle Run: how many gates this player has cleared (sequential mode 5)
+  const obstacleProgress =
+    gameState?.hunt_mode === 5 && normalizedWallet
+      ? gameState.shard_gates.filter(
+          (g) => g.ball_collected && normalizeAddress(g.collector) === normalizedWallet,
+        ).length
+      : 0;
   const allCollected =
     requiredSinguCount > 0 && collectedCount >= requiredSinguCount;
   const allDelivered =
@@ -1654,8 +1746,17 @@ export function HuntBoard() {
     if (gameState?.hunt_active && gameState.hunt_mode === 3) {
       void fetchDecryptQuestion();
       void fetchDecryptWinnerInfo(Number(gameState.current_epoch));
+      // Restore claimed state from localStorage
+      try {
+        const stored = localStorage.getItem(
+          `decrypt_claimed_${gameState.current_epoch}_${walletAddress ?? ""}`,
+        );
+        if (stored) setDecryptClaimedFromStorage(true);
+      } catch {}
+    } else {
+      setDecryptClaimedFromStorage(false);
     }
-  }, [gameState?.hunt_active, gameState?.hunt_mode, gameState?.current_epoch]);
+  }, [gameState?.hunt_active, gameState?.hunt_mode, gameState?.current_epoch, walletAddress]);
 
   if (loading) {
     return <div className="loading">SCANNING GATES...</div>;
@@ -1688,15 +1789,30 @@ export function HuntBoard() {
                 CONNECT WALLET
               </button>
             </>
+          ) : activeGate && gameState.hunt_mode === 5 && isConnected && activeIndex !== obstacleProgress ? (
+            <>
+              <h3>GATE LOCKED</h3>
+              <div className="context-row">
+                Gate: {activeGate.name || activeGate.gate_id}
+              </div>
+              <p className="error-text">
+                Clear Gate #{obstacleProgress + 1} first. Gates must be completed in order.
+              </p>
+            </>
           ) : activeGate ? (
             <>
-              <h3>{gameState.hunt_mode === 2 ? "COMPLETE TEAM CHECKPOINT" : "CLAIM SINGU HERE"}</h3>
+              <h3>{gameState.hunt_mode === 2 ? "COMPLETE TEAM CHECKPOINT" : gameState.hunt_mode === 4 ? "SEIZE ARENA SHARD" : "CLAIM SINGU HERE"}</h3>
               <div className="context-row">
                 Gate: {activeGate.name || activeGate.gate_id}
               </div>
               {gameState.hunt_mode === 2 && activeTeamState.assignment?.active && (
                 <div className="context-row">
                   Team progress: {activeTeamState.roster?.completed_count ?? 0} / {requiredSinguCount}
+                </div>
+              )}
+              {gameState.hunt_mode === 5 && isConnected && (
+                <div className="context-row">
+                  Obstacle progress: Gate {obstacleProgress + 1} of {requiredSinguCount}
                 </div>
               )}
               <button
@@ -1708,17 +1824,21 @@ export function HuntBoard() {
                 {activeTeamCompleted
                   ? "TEAM ALREADY CLEARED THIS CHECKPOINT"
                   : claimLoading
-                    ? "CLAIMING..."
+                    ? <Spinner text="CLAIMING..." />
                     : ticketLoading
-                      ? "REQUESTING..."
+                      ? <Spinner text="REQUESTING..." />
                       : gameState.hunt_mode === 2
                         ? "MARK TEAM CHECKPOINT"
-                        : "CLAIM SINGU HERE"}
+                        : gameState.hunt_mode === 4
+                          ? "SEIZE ARENA SHARD"
+                          : "CLAIM SINGU HERE"}
               </button>
-              {ticketError && <p className="error-text">{ticketError}</p>}
-              {claimError && <p className="error-text">{claimError}</p>}
+              {ticketLoading && <div className="step-indicator"><span className="btn-spinner" />Step 1/2: Requesting ticket...</div>}
+              {claimLoading && <div className="step-indicator"><span className="btn-spinner" />Step 2/2: Signing transaction...</div>}
+              {ticketError && <p className="error-text error-shake">{ticketError}</p>}
+              {claimError && <p className="error-text error-shake">{claimError}</p>}
               {claimDigest && (
-                <div className="ticket-card">
+                <div className="ticket-card success-card">
                   <div className="status-label">Claimed!</div>
                   <div className="context-row">Digest: {claimDigest}</div>
                 </div>
@@ -1955,7 +2075,7 @@ export function HuntBoard() {
                   disabled={registerLoading}
                 >
                   {registerLoading
-                    ? "SUBMITTING..."
+                    ? <Spinner text="SUBMITTING..." />
                     : playerRegistrationPass
                       ? "ACTIVATE REGISTRATION PASS"
                       : "BUY REGISTRATION PASS"}
@@ -1973,9 +2093,9 @@ export function HuntBoard() {
                   Connect wallet, pay the mode fee, and receive a Registration Pass for this session.
                 </p>
               )}
-              {registerError && <p className="error-text">{registerError}</p>}
+              {registerError && <p className="error-text error-shake">{registerError}</p>}
               {registerDigest && registerSuccessLabel && (
-                <div className="ticket-card">
+                <div className="ticket-card success-card">
                   <div className="status-label">{registerSuccessLabel}</div>
                   <div className="context-row">Digest: {registerDigest}</div>
                 </div>
@@ -2007,7 +2127,7 @@ export function HuntBoard() {
                     onClick={() => void deliverSinguShard(ball)}
                     disabled={deliverLoadingIndex === ball.shardIndex}
                   >
-                    {deliverLoadingIndex === ball.shardIndex ? "DELIVERING..." : "DELIVER"}
+                    {deliverLoadingIndex === ball.shardIndex ? <Spinner text="DELIVERING..." /> : "DELIVER"}
                   </button>
                 </div>
               ))}
@@ -2026,11 +2146,11 @@ export function HuntBoard() {
                 onClick={completeHunt}
                 disabled={completeLoading}
               >
-                {completeLoading ? "COMPLETING..." : "COMPLETE HUNT"}
+                {completeLoading ? <Spinner text="COMPLETING..." /> : "COMPLETE HUNT"}
               </button>
-              {completeError && <p className="error-text">{completeError}</p>}
+              {completeError && <p className="error-text error-shake">{completeError}</p>}
               {completeDigest && (
-                <div className="ticket-card">
+                <div className="ticket-card success-card">
                   <div className="status-label">Achievement Earned!</div>
                   <div className="context-row">Digest: {completeDigest}</div>
                 </div>
@@ -2041,7 +2161,7 @@ export function HuntBoard() {
           {gameState.hunt_mode === 2 && isConnected && homeGateMatched && (
             <div className="delivery-panel">
               <h3>TEAM RACE COMMAND BOARD</h3>
-              <div className="context-row">
+              <div className={`context-row${teamProgressPulse ? " team-progress-pulse" : ""}`}>
                 Team progress: {activeTeamState.roster?.completed_count ?? 0} / {requiredSinguCount}
               </div>
               {activeTeamRosterVisible ? (
@@ -2072,12 +2192,12 @@ export function HuntBoard() {
                   onClick={completeTeamRace}
                   disabled={completeLoading}
                 >
-                  {completeLoading ? "FINALIZING..." : "RETURN TO BASE AND CLAIM TEAM AWARD"}
+                  {completeLoading ? <Spinner text="FINALIZING..." /> : "RETURN TO BASE AND CLAIM TEAM AWARD"}
                 </button>
               )}
-              {completeError && <p className="error-text">{completeError}</p>}
+              {completeError && <p className="error-text error-shake">{completeError}</p>}
               {completeDigest && (
-                <div className="ticket-card">
+                <div className="ticket-card success-card">
                   <div className="status-label">Team Race Complete</div>
                   <div className="context-row">Digest: {completeDigest}</div>
                 </div>
@@ -2085,20 +2205,84 @@ export function HuntBoard() {
             </div>
           )}
 
+          {gameState.hunt_mode === 2 && homeRoute && teamLeaderboard.length > 0 && (
+            <div className="bulletin-board team-leaderboard">
+              <h3>TEAM LEADERBOARD</h3>
+              <div className="team-leaderboard-list">
+                {teamLeaderboard.map((team) => (
+                  <div
+                    key={team.team_id}
+                    className={`team-row${team.finished ? " team-finished" : ""}`}
+                  >
+                    <span className="team-rank">
+                      {team.finished ? `#${team.winner_rank}` : "--"}
+                    </span>
+                    <span className="team-name">Team {team.team_id}</span>
+                    <span className="team-progress">
+                      {team.completed_count}/{requiredSinguCount}
+                    </span>
+                    <span className="team-status">
+                      {team.finished ? "FINISHED" : "RACING"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {gameState.hunt_mode === 4 && effectivelyActive && (
+            <div className="pvp-warning">WARNING: LARGE ARENA — PVP ZONE ACTIVE. Other players may intercept your shards.</div>
+          )}
+
+          {/* Obstacle Run: progress trail */}
+          {gameState.hunt_mode === 5 && isConnected && effectivelyActive && (
+            <div className="obstacle-trail">
+              {gameState.shard_gates.map((_, i) => (
+                <div
+                  key={i}
+                  className={`trail-dot${
+                    i < obstacleProgress ? " cleared" : i === obstacleProgress ? " next" : " locked"
+                  }`}
+                >
+                  {i + 1}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Obstacle Run: NEXT GATE banner */}
+          {gameState.hunt_mode === 5 && isConnected && effectivelyActive && obstacleProgress < gameState.shard_gates.length && (
+            <div className="obstacle-next-banner">
+              NEXT: Gate #{obstacleProgress + 1} — {gameState.shard_gates[obstacleProgress]?.name || gameState.shard_gates[obstacleProgress]?.gate_id}
+            </div>
+          )}
+
           <div className="singularity-grid">
             {gameState.shard_gates.map((gate, index) => {
               const meta = getGateMetadata(gate.gate_id);
               const teamDone = teamClaimedIndices.has(index);
+              const isObstacle = gameState.hunt_mode === 5 && isConnected;
+              const obstCleared = isObstacle && index < obstacleProgress;
+              const obstNext = isObstacle && index === obstacleProgress;
+              const obstLocked = isObstacle && index > obstacleProgress;
               return (
                 <div
                   key={`${gate.gate_id}-${index}`}
+                  style={{ "--entrance-i": index } as React.CSSProperties}
                   className={`singularity-card ${
-                    gameState.hunt_mode === 2 ? (teamDone ? "collected" : "") : gate.ball_collected ? "collected" : ""
-                  }`}
+                    gameState.hunt_mode === 2 ? (teamDone ? "collected" : "") :
+                    obstCleared ? "collected" :
+                    obstNext ? "next-gate" :
+                    obstLocked ? "locked" :
+                    gate.ball_collected ? "collected" : ""
+                  }${gameState.hunt_mode === 4 ? " heavy-gate" : ""}`}
                 >
                   <div className="singularity-index">{index + 1}</div>
                   <div className="singularity-info">
                     <div className="singularity-coords">{gate.name || gate.gate_id}</div>
+                    {MODE_ASSEMBLY_TYPE[gameState.hunt_mode] && (
+                      <div className="gate-type-badge">{MODE_ASSEMBLY_TYPE[gameState.hunt_mode]}</div>
+                    )}
                     {meta && (
                       <>
                         <div className="singularity-system solar-system">{meta.solarSystem}</div>
@@ -2128,22 +2312,34 @@ export function HuntBoard() {
                         ? teamDone
                           ? "delivered"
                           : "available"
-                        : gate.ball_delivered
+                        : obstCleared
                           ? "delivered"
-                          : gate.ball_collected
-                            ? "taken"
-                            : "available"
+                          : obstNext
+                            ? "available"
+                            : obstLocked
+                              ? "locked"
+                              : gate.ball_delivered
+                                ? "delivered"
+                                : gate.ball_collected
+                                  ? "taken"
+                                  : "available"
                     }`}
                   >
                     {gameState.hunt_mode === 2
                       ? teamDone
                         ? "TEAM DONE"
                         : "OPEN"
-                      : gate.ball_delivered
-                        ? "DELIVERED"
-                        : gate.ball_collected
-                          ? "CLAIMED"
-                          : "OPEN"}
+                      : obstCleared
+                        ? "CLEARED"
+                        : obstNext
+                          ? "NEXT"
+                          : obstLocked
+                            ? "LOCKED"
+                            : gate.ball_delivered
+                              ? "DELIVERED"
+                              : gate.ball_collected
+                                ? "CLAIMED"
+                                : "OPEN"}
                   </div>
                 </div>
               );
@@ -2186,12 +2382,14 @@ export function HuntBoard() {
               {activeTeamCompleted
                 ? "TEAM ALREADY CLEARED THIS CHECKPOINT"
                 : claimLoading
-                  ? "CLAIMING..."
+                  ? <Spinner text="CLAIMING..." />
                   : ticketLoading
-                    ? "REQUESTING..."
+                    ? <Spinner text="REQUESTING..." />
                     : gameState.hunt_mode === 2
                       ? "MARK TEAM CHECKPOINT"
-                      : "CLAIM SINGU HERE"}
+                      : gameState.hunt_mode === 4
+                        ? "SEIZE ARENA SHARD"
+                        : "CLAIM SINGU HERE"}
             </button>
           </>
         )}
@@ -2232,14 +2430,14 @@ export function HuntBoard() {
         )}
         {claimError && <p className="error-text">{claimError}</p>}
         {claimDigest && (
-          <div className="ticket-card">
+          <div className="ticket-card success-card">
             <div className="status-label">Claim Submitted</div>
             <div className="context-row">Digest: {claimDigest}</div>
           </div>
         )}
-        {deliverError && <p className="error-text">{deliverError}</p>}
+        {deliverError && <p className="error-text error-shake">{deliverError}</p>}
         {deliverDigest && (
-          <div className="ticket-card">
+          <div className="ticket-card success-card">
             <div className="status-label">Delivery Submitted</div>
             <div className="context-row">Digest: {deliverDigest}</div>
           </div>
@@ -2248,14 +2446,24 @@ export function HuntBoard() {
 
       {/* Deep Decrypt Quiz Panel — shown on any page when mode is 3 */}
       {gameState.hunt_mode === 3 && effectivelyActive && (
-        <div className="bulletin-board decrypt-panel">
+        <div className={`bulletin-board decrypt-panel${decryptClaimDigest || decryptClaimedFromStorage ? " decrypt-claimed" : ""}`}>
           <h3>DEEP DECRYPT CHALLENGE</h3>
+          {huntCountdown && huntCountdown !== "EXPIRED" && (
+            <div className="decrypt-timer">TIME LEFT: {huntCountdown}</div>
+          )}
           {decryptWinnerInfo && (
             <div className="context-row">
               Winner Slots: {decryptWinnerInfo.count} / {decryptWinnerInfo.slots} filled
             </div>
           )}
-          {decryptQuestion ? (
+          {decryptClaimDigest || decryptClaimedFromStorage ? (
+            <div className="ticket-card">
+              <div className="status-label">Achievement Earned!</div>
+              {decryptClaimDigest && (
+                <div className="context-row">Digest: {decryptClaimDigest}</div>
+              )}
+            </div>
+          ) : decryptQuestion ? (
             <>
               <div className="decrypt-question">
                 <p className="decrypt-prompt">{decryptQuestion.prompt}</p>
@@ -2268,12 +2476,7 @@ export function HuntBoard() {
                   Reference Source
                 </a>
               </div>
-              {decryptClaimDigest ? (
-                <div className="ticket-card">
-                  <div className="status-label">Achievement Earned!</div>
-                  <div className="context-row">Digest: {decryptClaimDigest}</div>
-                </div>
-              ) : decryptTicket ? (
+              {decryptTicket ? (
                 <div className="decrypt-claim">
                   <div className="ticket-card">
                     <div className="status-label">CORRECT! Ticket Ready</div>
@@ -2283,9 +2486,9 @@ export function HuntBoard() {
                     onClick={claimDecryptAchievement}
                     disabled={decryptClaimLoading}
                   >
-                    {decryptClaimLoading ? "CLAIMING..." : "CLAIM ACHIEVEMENT NFT"}
+                    {decryptClaimLoading ? <Spinner text="CLAIMING..." /> : "CLAIM ACHIEVEMENT NFT"}
                   </button>
-                  {decryptClaimError && <p className="error-text">{decryptClaimError}</p>}
+                  {decryptClaimError && <p className="error-text error-shake">{decryptClaimError}</p>}
                 </div>
               ) : isConnected ? (
                 <div className="decrypt-form">
@@ -2304,9 +2507,9 @@ export function HuntBoard() {
                     onClick={submitDecryptAnswer}
                     disabled={decryptLoading || !decryptAnswer.trim()}
                   >
-                    {decryptLoading ? "CHECKING..." : "SUBMIT ANSWER"}
+                    {decryptLoading ? <Spinner text="CHECKING..." /> : "SUBMIT ANSWER"}
                   </button>
-                  {decryptError && <p className="error-text">{decryptError}</p>}
+                  {decryptError && <p className="error-text error-shake">{decryptError}</p>}
                 </div>
               ) : (
                 <>
@@ -2331,16 +2534,28 @@ export function HuntBoard() {
           {gameState.shard_gates.map((gate, index) => {
             const meta = getGateMetadata(gate.gate_id);
             const teamDone = teamClaimedIndices.has(index);
+            const isObstacle = gameState.hunt_mode === 5 && isConnected;
+            const obstCleared = isObstacle && index < obstacleProgress;
+            const obstNext = isObstacle && index === obstacleProgress;
+            const obstLocked = isObstacle && index > obstacleProgress;
             return (
               <div
                 key={`${gate.gate_id}-${index}`}
+                style={{ "--entrance-i": index } as React.CSSProperties}
                 className={`singularity-card ${
-                  gameState.hunt_mode === 2 ? (teamDone ? "collected" : "") : gate.ball_collected ? "collected" : ""
-                }`}
+                  gameState.hunt_mode === 2 ? (teamDone ? "collected" : "") :
+                  obstCleared ? "collected" :
+                  obstNext ? "next-gate" :
+                  obstLocked ? "locked" :
+                  gate.ball_collected ? "collected" : ""
+                }${gameState.hunt_mode === 4 ? " heavy-gate" : ""}`}
               >
                 <div className="singularity-index">#{index}</div>
                 <div className="singularity-info">
                   <div className="singularity-system">{gate.name || gate.gate_id}</div>
+                  {MODE_ASSEMBLY_TYPE[gameState.hunt_mode] && (
+                    <div className="gate-type-badge">{MODE_ASSEMBLY_TYPE[gameState.hunt_mode]}</div>
+                  )}
                   {meta && (
                     <>
                       <div className="singularity-system solar-system">{meta.solarSystem}</div>
@@ -2357,22 +2572,34 @@ export function HuntBoard() {
                       ? teamDone
                         ? "delivered"
                         : "available"
-                      : gate.ball_delivered
+                      : obstCleared
                         ? "delivered"
-                        : gate.ball_collected
-                          ? "taken"
-                          : "available"
+                        : obstNext
+                          ? "available"
+                          : obstLocked
+                            ? "locked"
+                            : gate.ball_delivered
+                              ? "delivered"
+                              : gate.ball_collected
+                                ? "taken"
+                                : "available"
                   }`}
                 >
                   {gameState.hunt_mode === 2
                     ? teamDone
                       ? "TEAM DONE"
                       : "OPEN"
-                    : gate.ball_delivered
-                      ? "DELIVERED"
-                      : gate.ball_collected
-                        ? "TAKEN"
-                        : "OPEN"}
+                    : obstCleared
+                      ? "CLEARED"
+                      : obstNext
+                        ? "NEXT"
+                        : obstLocked
+                          ? "LOCKED"
+                          : gate.ball_delivered
+                            ? "DELIVERED"
+                            : gate.ball_collected
+                              ? "TAKEN"
+                              : "OPEN"}
                 </span>
               </div>
             );

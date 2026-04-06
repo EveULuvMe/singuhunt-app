@@ -524,3 +524,258 @@ h3 { font-size: 1rem; margin-bottom: 8px; }
   50% { opacity: 0.5; }
 }
 .loading { animation: pulse 2s infinite; }
+
+/* Animation: button spinner */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.btn-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+/* Animation: success pop */
+@keyframes checkmark-pop {
+  0% { transform: scale(0); opacity: 0; }
+  60% { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.success-card {
+  animation: checkmark-pop 0.4s ease-out;
+  border-color: var(--color-accent);
+  background: rgba(0, 255, 170, 0.06);
+}
+
+/* Animation: error shake */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  15% { transform: translateX(-4px); }
+  30% { transform: translateX(4px); }
+  45% { transform: translateX(-3px); }
+  60% { transform: translateX(3px); }
+  75% { transform: translateX(-1px); }
+}
+.error-shake {
+  animation: shake 0.4s ease-out;
+}
+
+/* Animation: button press */
+.claim-btn:active, .collect-btn:active {
+  transform: scale(0.97);
+}
+
+/* Animation: gate card entrance */
+@keyframes slide-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.singularity-card {
+  animation: slide-in 0.3s ease-out both;
+  animation-delay: calc(var(--entrance-i, 0) * 0.05s);
+}
+
+/* Animation: two-step progress */
+.step-indicator {
+  font-family: monospace;
+  font-size: 0.8rem;
+  color: var(--color-accent);
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Team Race: checkpoint progress pulse */
+@keyframes team-glow {
+  0% { color: var(--color-text); text-shadow: none; }
+  30% { color: var(--color-accent); text-shadow: 0 0 8px var(--color-accent); }
+  100% { color: var(--color-text); text-shadow: none; }
+}
+.team-progress-pulse {
+  animation: team-glow 1.2s ease-out;
+}
+
+/* Team Race: leaderboard */
+.team-leaderboard { margin-top: 12px; }
+.team-leaderboard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+.team-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-family: monospace;
+}
+.team-row.team-finished {
+  border-color: var(--color-accent);
+  background: rgba(0, 255, 170, 0.05);
+}
+.team-rank {
+  min-width: 32px;
+  font-weight: bold;
+  color: var(--color-accent);
+}
+.team-row:not(.team-finished) .team-rank {
+  color: rgba(255, 255, 255, 0.3);
+}
+.team-name { flex: 1; }
+.team-progress {
+  min-width: 40px;
+  text-align: right;
+  color: var(--color-collected);
+}
+.team-status {
+  min-width: 64px;
+  text-align: right;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+.team-row.team-finished .team-status {
+  color: var(--color-accent);
+}
+.team-row:not(.team-finished) .team-status {
+  color: var(--color-danger);
+}
+
+/* Large Arena: PvP warning */
+.pvp-warning {
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--color-danger);
+  border-radius: 4px;
+  background: rgba(255, 68, 68, 0.08);
+  color: var(--color-danger);
+  font-family: monospace;
+  font-size: 0.85rem;
+  font-weight: bold;
+  text-align: center;
+  letter-spacing: 0.03em;
+}
+
+/* Large Arena: Heavy Gate card */
+.singularity-card.heavy-gate {
+  border-color: #cc5500;
+  background: rgba(204, 85, 0, 0.06);
+}
+.singularity-card.heavy-gate:hover {
+  border-color: var(--color-danger);
+}
+
+/* Gate type badge */
+.gate-type-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-family: monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.6);
+  margin-top: 2px;
+}
+.heavy-gate .gate-type-badge {
+  border-color: #cc5500;
+  color: #cc5500;
+}
+
+/* Obstacle Run: progress trail */
+.obstacle-trail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  overflow-x: auto;
+}
+.trail-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-family: monospace;
+  font-weight: bold;
+  flex-shrink: 0;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.3);
+  transition: all 0.3s;
+}
+.trail-dot.cleared {
+  border-color: var(--color-accent);
+  background: rgba(0, 255, 170, 0.15);
+  color: var(--color-accent);
+}
+.trail-dot.next {
+  border-color: var(--color-collected);
+  background: rgba(255, 170, 0, 0.12);
+  color: var(--color-collected);
+  animation: pulse 1.5s infinite;
+}
+.trail-dot.locked {
+  opacity: 0.35;
+}
+
+/* Obstacle Run: next gate banner */
+.obstacle-next-banner {
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--color-collected);
+  border-radius: 4px;
+  background: rgba(255, 170, 0, 0.08);
+  color: var(--color-collected);
+  font-family: monospace;
+  font-size: 0.9rem;
+  font-weight: bold;
+  text-align: center;
+}
+
+/* Obstacle Run: gate card states */
+@keyframes next-gate-pulse {
+  0%, 100% { border-color: var(--color-collected); }
+  50% { border-color: rgba(255, 170, 0, 0.3); }
+}
+.singularity-card.next-gate {
+  border-color: var(--color-collected);
+  background: rgba(255, 170, 0, 0.06);
+  animation: next-gate-pulse 2s infinite;
+}
+.singularity-card.locked {
+  opacity: 0.35;
+  pointer-events: none;
+}
+.singularity-status.locked {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+/* Deep Decrypt: timer */
+.decrypt-timer {
+  font-family: monospace;
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: var(--color-accent);
+  margin-bottom: 8px;
+  letter-spacing: 0.05em;
+}
+
+/* Deep Decrypt: claimed state */
+.decrypt-panel.decrypt-claimed {
+  border-color: var(--color-collected);
+  background: rgba(255, 170, 0, 0.06);
+}
