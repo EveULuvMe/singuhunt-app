@@ -1048,6 +1048,8 @@ export function HuntBoard() {
   const smartObjectId = normalizeAddress((assembly as any)?.item_id);
   const assemblyId = smartObjectId || (gateSlug ? normalizeAddress(SLUG_ASSEMBLY_MAP[gateSlug]) : "");
   const assemblyName = (assembly as any)?.name || (gateSlug ? `Gate ${gateSlug}` : "Unknown assembly");
+  // True when running inside EVE Frontier (SDK injects assembly context)
+  const isInGame = !assemblyLoading && Boolean(smartObjectId);
 
   async function refetchGameState() {
     try {
@@ -1786,7 +1788,14 @@ export function HuntBoard() {
       {/* Quick-action panel: show CLAIM / CONNECT prominently at the top on gate pages */}
       {!homeRoute && (
         <div className="bulletin-board quick-action">
-          {!isConnected ? (
+          {!isInGame ? (
+            <>
+              <h3>ACCESS DENIED</h3>
+              <p className="error-text">
+                Open this dApp from inside EVE Frontier. Navigate to a SinguHunt gate in-game to play.
+              </p>
+            </>
+          ) : !isConnected ? (
             <>
               <h3>CONNECT WALLET TO CLAIM</h3>
               <button className="claim-btn" onClick={handleConnect}>
@@ -2068,7 +2077,11 @@ export function HuntBoard() {
                   <div className="context-row">{registrationState.roster.member_3}</div>
                 </div>
               )}
-              {!isConnected ? (
+              {!isInGame ? (
+                <p className="error-text">
+                  ACCESS DENIED — Open this dApp from inside EVE Frontier. Navigate to a SinguHunt gate in-game to play.
+                </p>
+              ) : !isConnected ? (
                 <button className="claim-btn" onClick={handleConnect}>
                   CONNECT WALLET
                 </button>
@@ -2092,7 +2105,7 @@ export function HuntBoard() {
                   </div>
                 </div>
               ) : null}
-              {isConnected && registrationState.isOpen && !registrationState.playerRegistered && !playerRegistrationPass && (
+              {isInGame && isConnected && registrationState.isOpen && !registrationState.playerRegistered && !playerRegistrationPass && (
                 <p className="hint">
                   Connect wallet, pay the mode fee, and receive a Registration Pass for this session.
                 </p>
@@ -2107,7 +2120,7 @@ export function HuntBoard() {
             </div>
           )}
 
-          {gameState.hunt_mode !== 2 && isConnected && homeGateMatched && (
+          {gameState.hunt_mode !== 2 && isInGame && isConnected && homeGateMatched && (
             <div className="delivery-panel">
               <h3>DELIVER TO HOME GATE</h3>
               <div className="context-row">
@@ -2162,7 +2175,7 @@ export function HuntBoard() {
             </div>
           )}
 
-          {gameState.hunt_mode === 2 && isConnected && homeGateMatched && (
+          {gameState.hunt_mode === 2 && isInGame && isConnected && homeGateMatched && (
             <div className="delivery-panel">
               <h3>TEAM RACE COMMAND BOARD</h3>
               <div className={`context-row${teamProgressPulse ? " team-progress-pulse" : ""}`}>
@@ -2366,12 +2379,12 @@ export function HuntBoard() {
         <div className="context-row">
           Gate Route: {gateSlug ? `/${gateSlug}?v=${CACHE_VERSION}` : "Missing"}
         </div>
-        {!isConnected && (
+        {isInGame && !isConnected && (
           <button className="collect-btn" onClick={handleConnect}>
             CONNECT WALLET
           </button>
         )}
-        {activeGate && !homeRoute && (
+        {isInGame && activeGate && !homeRoute && (
           <>
             <p className="hint">
               {gameState.hunt_mode === 2
