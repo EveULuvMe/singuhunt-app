@@ -7,3 +7,4 @@ dist/
 cloudflare-proxy/wrangler.toml
 cloudflare-proxy/.dev.vars
 move-contracts/**/build/
+ts-scripts/open-test-registration.ts
