@@ -1048,8 +1048,8 @@ export function HuntBoard() {
   const smartObjectId = normalizeAddress((assembly as any)?.item_id);
   const assemblyId = smartObjectId || (gateSlug ? normalizeAddress(SLUG_ASSEMBLY_MAP[gateSlug]) : "");
   const assemblyName = (assembly as any)?.name || (gateSlug ? `Gate ${gateSlug}` : "Unknown assembly");
-  // True when running inside EVE Frontier (SDK injects assembly context)
-  const isInGame = !assemblyLoading && Boolean(smartObjectId);
+  // True when running inside EVE Frontier (loaded in an iframe by the game client)
+  const isInGame = typeof window !== "undefined" && window.self !== window.top;
 
   async function refetchGameState() {
     try {
