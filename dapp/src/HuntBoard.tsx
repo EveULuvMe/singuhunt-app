@@ -1049,8 +1049,6 @@ export function HuntBoard() {
   const smartObjectId = normalizeAddress((assembly as any)?.item_id);
   const assemblyId = smartObjectId || (gateSlug ? normalizeAddress(SLUG_ASSEMBLY_MAP[gateSlug]) : "");
   const assemblyName = (assembly as any)?.name || (gateSlug ? `Gate ${gateSlug}` : "Unknown assembly");
-  // Soft hint: likely in-game when loaded in an iframe; used for warnings only, never to block actions
-  const likelyExternal = typeof window !== "undefined" && window.self === window.top;
 
   async function refetchGameState() {
     try {
@@ -1779,12 +1777,6 @@ export function HuntBoard() {
 
   return (
     <>
-      {likelyExternal && (
-        <div className="pvp-warning">
-          WARNING: You appear to be outside EVE Frontier. Claim and deliver actions require in-game access.
-        </div>
-      )}
-
       {showModeIntro != null && (
         <GameGuideModal
           initialMode={showModeIntro}
