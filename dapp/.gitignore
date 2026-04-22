@@ -1,1 +1,6 @@
 .vercel
+.env.vercel*
+AGENTS.md
+agents.md
+PLANS.md
+plans.md

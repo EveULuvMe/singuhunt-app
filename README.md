@@ -1,6 +1,10 @@
 # SinguHunt App
 
-Private application repo for the SinguHunt gameplay stack on Sui testnet.
+Application repo for the SinguHunt gameplay stack on Sui testnet.
+
+Player-facing on-chain treasure-hunt dApp on EVE Frontier × Sui · Site <https://eveuluv.me/> · Demo <https://youtu.be/DWrJCcNGC0c>
+
+Join the Discord community at <https://discord.gg/5bGUfNngHw> to report technical issues or share suggestions.
 
 ## What Is In This Repo
 - `dapp/`: Vite + React frontend plus Vercel serverless APIs for claim, deliver, health, and gate-scoped ticket routes.
@@ -8,6 +12,46 @@ Private application repo for the SinguHunt gameplay stack on Sui testnet.
 - `ts-scripts/`: operational scripts for starting hunts, configuring gates, querying state, claiming achievements, and ticket verification.
 - `config/gates.json`: local gate pool and required shard count.
 - `move-contracts/singu-turret/`: Move package for turret-related on-chain logic.
+
+## System Architecture
+
+Three-tier hybrid: in-game smart assembly → Cloudflare Worker (HMAC-signed gate context) → Vercel (SPA + serverless API) → Sui testnet.
+
+```mermaid
+graph TB
+    subgraph "EVE Frontier Game Client"
+        Player[Player]
+        Assembly[Smart Assembly + EVE Frontier Client Wallet]
+    end
+    subgraph "Edge"
+        CF[Cloudflare Worker Proxy]
+    end
+    subgraph "Vercel"
+        SPA[Vite + React SPA]
+        API[Serverless API: claim / deliver / health / ticket]
+    end
+    subgraph "Sui Testnet — singuhunt package"
+        Hunt[singuhunt Move Package]
+        GameState[(GameState shared object)]
+        ShardTreasury[(SinguShardTreasury)]
+        AchievementTreasury[(AchievementTreasury)]
+    end
+    subgraph "Downstream"
+        Vault[singuvault-contracts]
+    end
+
+    Player --> Assembly
+    Assembly -->|launch dApp URL| CF
+    CF -->|inject x-ef-* HMAC headers| SPA
+    SPA -->|register / collect / deliver| API
+    API -->|signed claim/deliver ticket| SPA
+    SPA -->|sign tx via wallet| Hunt
+    Hunt --> GameState
+    Hunt --> ShardTreasury
+    Hunt --> AchievementTreasury
+    API -->|verify state| Hunt
+    AchievementTreasury -->|AchievementNFT redeemable in| Vault
+```
 
 ## Local Development
 

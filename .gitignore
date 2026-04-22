@@ -1,5 +1,9 @@
 .env
+.env.vercel*
 dapp/.env
+dapp/.env.vercel*
+CLAUDE.md
+claude.md
 *.log
 .DS_Store
 node_modules/
@@ -9,3 +13,8 @@ cloudflare-proxy/.dev.vars
 move-contracts/**/build/
 ts-scripts/open-test-registration.ts
 ts-scripts/test-hunt.ts
+.vercel
+AGENTS.md
+agents.md
+PLANS.md
+plans.md
