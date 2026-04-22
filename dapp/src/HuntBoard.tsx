@@ -11,7 +11,7 @@ const PACKAGE_ID =
   "0x4777d7fd135bbdb43bb89f35634442e9e5d9f26409ab1541702dd3921aabc92d";
 const CALL_PACKAGE_ID =
   import.meta.env.VITE_SINGUHUNT_CALL_PACKAGE_ID ||
-  "0x0b33afff43eba81896582f92d43d6edb2fbb75388f7dd5d450a9143fdc790793";
+  "0x0fffba7ceaf4c46a27195f484a32f478a5b3dccff4c1628a614c1224b52ee467";
 const EVE_COIN_TYPE =
   import.meta.env.VITE_EVE_COIN_TYPE ||
   "0xf0446b93345c1118f21239d7ac58fb82d005219b2016e100f074e4d17162a465::EVE::EVE";
@@ -290,18 +290,18 @@ async function rpcCall<T>(method: string, params: unknown[]): Promise<T> {
 
 /** Slug → assembly ID mapping (matches Cloudflare proxy TRUSTED_GATE_MAP). */
 const SLUG_ASSEMBLY_MAP: Record<string, string> = {
-  "singu-home": "0x1111111111111111111111111111111111111111111111111111111111111111",
-  "home": "0x1111111111111111111111111111111111111111111111111111111111111111",
-  "bulletin": "0x1111111111111111111111111111111111111111111111111111111111111111",
-  "singu-mini-001": "0x2222222222222222222222222222222222222222222222222222222222222222",
-  "singu-mini-002": "0x3333333333333333333333333333333333333333333333333333333333333333",
-  "singu-mini-003": "0x0000000000000000000000000000000000000000000000000000000000000000", // TBD
-  "singu-ssu-001": "0x4444444444444444444444444444444444444444444444444444444444444444",
-  "singu-ssu-002": "0x5555555555555555555555555555555555555555555555555555555555555555",
-  "singu-ssu-003": "0x6666666666666666666666666666666666666666666666666666666666666666",
-  "singu-heavy-001": "0x7777777777777777777777777777777777777777777777777777777777777777",
-  "singu-heavy-002": "0x8888888888888888888888888888888888888888888888888888888888888888",
-  "singu-heavy-003": "0x9999999999999999999999999999999999999999999999999999999999999999"
+  "singu-home": "0xf27500312bd59533d7f99fd575efb0b798d81437066ae79212d880501cadacdd",
+  "home": "0xf27500312bd59533d7f99fd575efb0b798d81437066ae79212d880501cadacdd",
+  "bulletin": "0xf27500312bd59533d7f99fd575efb0b798d81437066ae79212d880501cadacdd",
+  "singu-mini-001": "0x4e3eb175c4bac0edf3509b8681bf97d6439fc17bd462422f305f3db07599c36c",
+  "singu-mini-002": "0xe9799223e7a160bb25c41cbd581631ca330ed1e81ef5e799bad962e646f48d45",
+  "singu-mini-003": "0x00f73d1cf2b408c9e97a88af9ee3278bef05eecc68ecce56b7702d3708ffa71e",
+  "singu-ssu-001": "0x0703e74e68bea379250206b285904035649dfa2c3a544fb4571967f264a9877e",
+  "singu-ssu-002": "0xf956e5ca8447056f5bad7044cd60c8c78609ca703a2d4c797bc0e944e5206156",
+  "singu-ssu-003": "0x1d238ac1faca0d5f6e6efd132f1a3b1dc5e172d68e2547d7da10c85798d247a3",
+  "singu-heavy-001": "0x39913c81d0fec7f35cbcd93b5672e24a7a4a737f474c493b5c8f91c4beacc81e",
+  "singu-heavy-002": "0xffacc0a31c2043738cacd150a7ffbbabf258c2a45aa49df09b1b2d1376eec364",
+  "singu-heavy-003": "0x1840453d141280f202802c3eb2a525affe572a887125f47e1dbf43dee5786b31",
 };
 
 /**
@@ -1047,7 +1047,16 @@ export function HuntBoard() {
   const gateSlug = getGateSlugFromPath();
   const homeRoute = isHomeSlug(gateSlug);
   const smartObjectId = normalizeAddress((assembly as any)?.item_id);
-  const assemblyId = smartObjectId || (gateSlug ? normalizeAddress(SLUG_ASSEMBLY_MAP[gateSlug]) : "");
+  const slugAssemblyId = gateSlug && SLUG_ASSEMBLY_MAP[gateSlug] ? normalizeAddress(SLUG_ASSEMBLY_MAP[gateSlug]) : "";
+  const assemblyId = slugAssemblyId || smartObjectId;
+  // Detect in-game via HMAC-signed API auth check (Cloudflare proxy injects signatures)
+  const [isInGame, setIsInGame] = useState(false);
+  useEffect(() => {
+    fetch("/api/auth-check", { method: "GET" })
+      .then((r) => r.json())
+      .then((d) => setIsInGame(d.ok === true))
+      .catch(() => setIsInGame(false));
+  }, []);
   const assemblyName = (assembly as any)?.name || (gateSlug ? `Gate ${gateSlug}` : "Unknown assembly");
 
   async function refetchGameState() {
@@ -2073,6 +2082,10 @@ export function HuntBoard() {
                 <button className="claim-btn" onClick={handleConnect}>
                   CONNECT WALLET
                 </button>
+              ) : !isInGame ? (
+                <p className="error-text">
+                  Access denied — registration is only available inside EVE Frontier.
+                </p>
               ) : registrationState.isOpen && !registrationState.playerRegistered ? (
                 <button
                   className="claim-btn"

@@ -153,16 +153,21 @@ async function proxyRequest(request: Request, env: Env) {
   const headers = stripUntrustedHeaders(request);
   const gateSlug = getGateSlugFromPath(upstream.pathname);
 
-  if (
-    gateSlug &&
-    (upstream.pathname.endsWith("/claim-ticket") ||
-      upstream.pathname.endsWith("/deliver-ticket"))
-  ) {
+  const needsHmac =
+    (gateSlug &&
+      (upstream.pathname.endsWith("/claim-ticket") ||
+        upstream.pathname.endsWith("/deliver-ticket"))) ||
+    upstream.pathname === "/api/auth-check";
+
+  // For /api/auth-check, use singu-home as the gate context
+  const hmacGateSlug = upstream.pathname === "/api/auth-check" ? "singu-home" : gateSlug;
+
+  if (needsHmac && hmacGateSlug) {
     const gateMap = parseGateMap(
       env.TRUSTED_GATE_MAP,
       env.TRUSTED_TENANT || "your-tenant",
     );
-    const gate = gateMap.get(gateSlug);
+    const gate = gateMap.get(hmacGateSlug);
     if (!gate) {
       return new Response(
         JSON.stringify({ ok: false, error: "Unknown gate slug" }),
@@ -178,7 +183,7 @@ async function proxyRequest(request: Request, env: Env) {
 
     const timestampMs = Date.now();
     const signature = await signContext({
-      gateSlug,
+      gateSlug: hmacGateSlug,
       assemblyId: gate.assemblyId,
       tenant: gate.tenant,
       timestampMs,
@@ -201,7 +206,9 @@ async function proxyRequest(request: Request, env: Env) {
     init.body = request.body;
   }
 
-  return fetch(new Request(upstream.toString(), init));
+  return fetch(new Request(upstream.toString(), init), {
+    cf: { cacheTtl: 0, cacheEverything: false },
+  } as RequestInit);
 }
 
 export default {
