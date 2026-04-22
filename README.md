@@ -11,7 +11,6 @@ Join the Discord community at <https://discord.gg/5bGUfNngHw> to report technica
 - `cloudflare-proxy/`: Worker that signs trusted gate context headers before forwarding requests upstream.
 - `ts-scripts/`: operational scripts for starting hunts, configuring gates, querying state, claiming achievements, and ticket verification.
 - `config/gates.json`: local gate pool and required shard count.
-- `move-contracts/singu-turret/`: Move package for turret-related on-chain logic.
 
 ## System Architecture
 
